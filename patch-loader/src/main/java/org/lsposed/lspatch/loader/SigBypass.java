@@ -19,6 +19,7 @@ import org.lsposed.lspatch.share.Constants;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -291,12 +292,18 @@ public class SigBypass {
             hookSigningCertificateCheck(context);
         }
         if (sigBypassLevel >= Constants.SIGBYPASS_LV_PM_OPENAT) {
-            String cacheApkPath;
+            String cacheApkPath = null;
             try (ZipFile sourceFile = new ZipFile(context.getPackageResourcePath())) {
-                cacheApkPath = context.getCacheDir() + "/lspatch/origin/" + sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc() + ".apk";
+                var entry = sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH);
+                if (entry != null) {
+                    cacheApkPath = context.getCacheDir() + "/lspatch/origin/" + entry.getCrc() + ".apk";
+                }
             }
-            org.matrix.vector.nativebridge.SigBypass.enableOpenatHook(context.getPackageResourcePath(), cacheApkPath);
+            if (cacheApkPath != null && new File(cacheApkPath).exists()) {
+                org.matrix.vector.nativebridge.SigBypass.enableOpenatHook(context.getPackageResourcePath(), cacheApkPath);
+            }
         }
+
         if (sigBypassLevel >= Constants.SIGBYPASS_LV_PM_OPENAT_SVC) {
             // Reuses the apk paths enableOpenatHook just recorded; must run after it.
             org.matrix.vector.nativebridge.SigBypass.enableSvcRedirect();

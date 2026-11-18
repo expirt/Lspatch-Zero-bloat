@@ -96,6 +96,16 @@ data class PatchRequest(
     val gmsReplacementPackage: String? = null,
     // Declare the original signature as fake-signature for ROM signature spoofing. Recorded for the same reason.
     val declareFakeSignature: Boolean = false,
+    val storageRedirectEnabled: Boolean = false,
+    val containerPath: String? = null,
+    val redirectInternal: Boolean = true,
+    val redirectExternal: Boolean = true,
+    val redirectDatabases: Boolean = true,
+    val redirectPreferences: Boolean = true,
+    val redirectConstructors: Boolean = true,
+    val redirectLogging: Boolean = false,
+    val useMicroG: Boolean = false,
+    val microGVendor: String = "app.revanced",
     val origin: PatchOrigin = PatchOrigin.New,
 ) {
     val packageName: String get() = target.packageName

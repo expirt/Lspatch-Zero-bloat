@@ -20,9 +20,9 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path("src/main/jni/CMakeLists.txt")
+    sourceSets {
+        named("main") {
+            jniLibs.srcDir("src/main/jniLibs")
         }
     }
     namespace = "org.lsposed.lspatch.loader"
@@ -39,17 +39,10 @@ androidComponents.onVariants { variant ->
     }
 
     task<Copy>("copySo$variantCapped") {
-        dependsOn("assemble$variantCapped")
-        dependsOn("strip${variantCapped}DebugSymbols")
-        val libDir = variant.name + "/strip${variantCapped}DebugSymbols"
-        from(
-            fileTree(
-                "dir" to "$buildDir/intermediates/stripped_native_libs/$libDir/out/lib",
-                "include" to listOf("**/liblspatch.so")
-            )
-        )
+        from("src/main/jniLibs")
         into("${rootProject.projectDir}/out/assets/${variant.name}/lspatch/so")
     }
+
 
     task("copy$variantCapped") {
         dependsOn("copySo$variantCapped")

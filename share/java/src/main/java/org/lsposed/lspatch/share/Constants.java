@@ -17,7 +17,8 @@ public class Constants {
      */
     final static public String DOCUMENTS_PROVIDER_CLASS = "org.lsposed.lspatch.loader.LSPatchDocumentsProvider";
     final static public String DOCUMENTS_PROVIDER_AUTHORITY_SUFFIX = ".lspatch.documents";
-    final static public String MANAGER_PACKAGE_NAME = "org.lsposed.lspatch";
+    final static public String MANAGER_PACKAGE_NAME = "org.expirt.lspatch";
+
     final static public String MANAGER_SERVICE_NAME = "org.lsposed.lspatch.manager.ModuleService";
     final static public String MIGRATE_ASSET_PATH = "assets/lspatch/migrate.zip";
     final static public int MIN_ROLLING_VERSION_CODE = 348;

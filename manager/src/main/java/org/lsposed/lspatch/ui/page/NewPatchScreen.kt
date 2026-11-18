@@ -8,6 +8,7 @@ import android.os.Build
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
@@ -136,6 +138,7 @@ import org.lsposed.lspatch.ui.component.PatchStepList
 import org.lsposed.lspatch.ui.component.rememberExportApk
 import org.lsposed.lspatch.ui.component.settings.GmsSetting
 import org.lsposed.lspatch.ui.component.settings.KeystoreSetting
+import org.lsposed.lspatch.ui.component.settings.StorageRedirectSetting
 import org.lsposed.lspatch.ui.navigation.ModuleSelection
 import org.lsposed.lspatch.ui.navigation.SelectModules
 import org.lsposed.lspatch.ui.util.LocalSnackbarHost
@@ -346,6 +349,16 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
                         onInjectDocumentsProvider = viewModel::setInjectDocumentsProvider,
                         onSelectGmsReplacement = viewModel::setGmsReplacementPackage,
                         onDeclareFakeSignature = viewModel::setDeclareFakeSignature,
+                        onToggleStorageRedirect = viewModel::setStorageRedirectEnabled,
+                        onContainerPathChange = viewModel::setContainerPath,
+                        onToggleRedirectInternal = viewModel::setRedirectInternal,
+                        onToggleRedirectExternal = viewModel::setRedirectExternal,
+                        onToggleRedirectDatabases = viewModel::setRedirectDatabases,
+                        onToggleRedirectPreferences = viewModel::setRedirectPreferences,
+                        onToggleRedirectConstructors = viewModel::setRedirectConstructors,
+                        onToggleRedirectLogging = viewModel::setRedirectLogging,
+                        onToggleMicroG = viewModel::setUseMicroG,
+                        onMicroGVendorChange = viewModel::setMicroGVendor,
                     )
                 else ->
                     Column(
@@ -395,6 +408,16 @@ private fun ConfigureBody(
     onInjectDocumentsProvider: (Boolean) -> Unit,
     onSelectGmsReplacement: (String?) -> Unit,
     onDeclareFakeSignature: (Boolean) -> Unit,
+    onToggleStorageRedirect: (Boolean) -> Unit,
+    onContainerPathChange: (String?) -> Unit,
+    onToggleRedirectInternal: (Boolean) -> Unit,
+    onToggleRedirectExternal: (Boolean) -> Unit,
+    onToggleRedirectDatabases: (Boolean) -> Unit,
+    onToggleRedirectPreferences: (Boolean) -> Unit,
+    onToggleRedirectConstructors: (Boolean) -> Unit,
+    onToggleRedirectLogging: (Boolean) -> Unit,
+    onToggleMicroG: (Boolean) -> Unit,
+    onMicroGVendorChange: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHost = LocalSnackbarHost.current
@@ -539,6 +562,51 @@ private fun ConfigureBody(
                     },
                     onAddPackageVisibility = { onAddPermission(QUERY_ALL_PACKAGES) },
                 )
+                StorageRedirectSetting(
+                    enabled = request.storageRedirectEnabled,
+                    containerPath = request.containerPath,
+                    redirectInternal = request.redirectInternal,
+                    redirectExternal = request.redirectExternal,
+                    redirectDatabases = request.redirectDatabases,
+                    redirectPreferences = request.redirectPreferences,
+                    redirectConstructors = request.redirectConstructors,
+                    redirectLogging = request.redirectLogging,
+                    needsPermission = "android.permission.MANAGE_EXTERNAL_STORAGE" !in request.addedPermissions,
+                    onToggleEnabled = onToggleStorageRedirect,
+                    onContainerPathChange = onContainerPathChange,
+                    onToggleInternal = onToggleRedirectInternal,
+                    onToggleExternal = onToggleRedirectExternal,
+                    onToggleDatabases = onToggleRedirectDatabases,
+                    onTogglePreferences = onToggleRedirectPreferences,
+                    onToggleConstructors = onToggleRedirectConstructors,
+                    onToggleLogging = onToggleRedirectLogging,
+                    onAddPermission = { onAddPermission("android.permission.MANAGE_EXTERNAL_STORAGE") },
+                )
+                ToggleRow(
+                    title = stringResource(R.string.patch_microg),
+                    icon = Icons.Rounded.CloudSync,
+                    subtitle = stringResource(R.string.patch_microg_desc),
+                    checked = request.useMicroG,
+                    onCheckedChange = onToggleMicroG,
+                )
+                AnimatedVisibility(visible = request.useMicroG) {
+                    var vendorText by rememberSaveable(request.microGVendor) {
+                        mutableStateOf(request.microGVendor)
+                    }
+                    Column(Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
+                        OutlinedTextField(
+                            value = vendorText,
+                            onValueChange = {
+                                vendorText = it
+                                onMicroGVendorChange(it)
+                            },
+                            label = { Text(stringResource(R.string.patch_microg_vendor)) },
+                            placeholder = { Text("app.revanced") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+                }
                 ToggleRow(
                     title = stringResource(R.string.patch_inject_dex),
                     icon = Icons.Rounded.Code,
@@ -809,6 +877,12 @@ private fun advancedChips(request: PatchRequest): List<OptionChipData> = buildLi
     }
     if (request.declareFakeSignature) {
         add(OptionChipData(stringResource(R.string.patch_gms_declare_only), true, Icons.Rounded.VerifiedUser))
+    }
+    if (request.storageRedirectEnabled) {
+        add(OptionChipData(stringResource(R.string.patch_storage_redirect), true, Icons.Rounded.FolderOpen))
+    }
+    if (request.useMicroG) {
+        add(OptionChipData(stringResource(R.string.patch_microg), true, Icons.Rounded.CloudSync))
     }
     if (!MyKeyStore.useDefault) {
         add(OptionChipData(stringResource(R.string.settings_keystore_custom), true, Icons.Outlined.Ballot))

@@ -469,6 +469,20 @@ fun AppDetailScreen(navigator: Navigator, packageName: String) {
                                 stringResource(R.string.patch_gms_unchanged)
                             },
                     )
+                    InfoRow(
+                        stringResource(R.string.patch_storage_redirect),
+                        if (config?.storageRedirectEnabled == true) {
+                            config.containerPath ?: "Containers/{pkg}"
+                        } else {
+                            stringResource(R.string.patch_storage_redirect_disabled)
+                        },
+                    )
+                    if (config?.useMicroG == true) {
+                        InfoRow(
+                            stringResource(R.string.patch_microg),
+                            config.microGVendor ?: "app.revanced",
+                        )
+                    }
                     // Manifest attributes, read from the installed manifest rather than the patch
                     // config: they are baked into the manifest at patch time and are not carried in the
                     // runtime config, so this reflects the app's actual manifest. Grouped and ordered to

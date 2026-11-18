@@ -89,6 +89,36 @@ public class LSPatch {
     @Parameter(names = {"--fake-signature"}, description = "Declare the original signature as fake-signature, for a ROM with signature spoofing")
     private boolean declareFakeSignature = false;
 
+    @Parameter(names = {"--storage-redirect", "--sr"}, description = "Enable storage redirection to custom container")
+    private boolean storageRedirectEnabled = false;
+
+    @Parameter(names = {"--container-path"}, description = "Custom container directory template (default: Containers/{pkg})")
+    private String containerPath = "Containers/{pkg}";
+
+    @Parameter(names = {"--sr-internal"}, description = "Redirect internal data (/data/user/0/<pkg>) to container", arity = 1)
+    private boolean redirectInternal = true;
+
+    @Parameter(names = {"--sr-external"}, description = "Redirect external storage (/sdcard) to container", arity = 1)
+    private boolean redirectExternal = true;
+
+    @Parameter(names = {"--sr-databases"}, description = "Redirect SQLite database paths", arity = 1)
+    private boolean redirectDatabases = true;
+
+    @Parameter(names = {"--sr-preferences"}, description = "Redirect SharedPreferences", arity = 1)
+    private boolean redirectPreferences = true;
+
+    @Parameter(names = {"--sr-constructors"}, description = "Redirect File and stream constructor calls", arity = 1)
+    private boolean redirectConstructors = true;
+
+    @Parameter(names = {"--sr-logging"}, description = "Enable redirection activity logging to <container>/redirect.log")
+    private boolean redirectLogging = false;
+
+    @Parameter(names = {"--microg"}, description = "Enable MicroG universal integration patch (rewrite GMS references to MicroG at build-time)")
+    private boolean useMicroG = false;
+
+    @Parameter(names = {"--microg-vendor"}, description = "Vendor prefix for MicroG integration (default: app.revanced)")
+    private String microGVendor = "app.revanced";
+
     private final JCommander jCommander;
 
     public LSPatch(String... args) {
@@ -146,6 +176,16 @@ public class LSPatch {
                 .injectDocumentsProvider(injectDocumentsProvider)
                 .gmsReplacementPackage(gmsReplacementPackage)
                 .declareFakeSignature(declareFakeSignature)
+                .storageRedirectEnabled(storageRedirectEnabled)
+                .containerPath(containerPath)
+                .redirectInternal(redirectInternal)
+                .redirectExternal(redirectExternal)
+                .redirectDatabases(redirectDatabases)
+                .redirectPreferences(redirectPreferences)
+                .redirectConstructors(redirectConstructors)
+                .redirectLogging(redirectLogging)
+                .useMicroG(useMicroG)
+                .microGVendor(microGVendor)
                 .build();
         return PatchSpec.builder()
                 .apks(apkPaths.stream().map(File::new).collect(Collectors.toList()))

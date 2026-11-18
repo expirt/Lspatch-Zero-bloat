@@ -35,8 +35,19 @@ data class GmsReplacement(
  */
 object GmsReplacements {
 
-    /** The action a Play services client binds to sign in, and so the one a replacement has to answer. */
-    private const val SIGN_IN_SERVICE = "com.google.android.gms.auth.api.signin.service.START"
+    private val KNOWN_REPLACEMENTS = listOf(
+        "app.revanced.android.gms",
+        "org.microg.gms",
+        "com.mgoogle.android.gms",
+        "org.microg.android.gms",
+    )
+
+    private val SIGN_IN_ACTIONS = listOf(
+        "com.google.android.gms.auth.api.signin.service.START",
+        "com.google.android.gms.signin.service.START",
+        "org.microg.gms.signin.service.START",
+        "app.revanced.android.gms.auth.api.signin.service.START",
+    )
 
     /**
      * The vendor token of a replacement's package -- what distinguishes one build from another.
@@ -51,16 +62,41 @@ object GmsReplacements {
             .removeSuffix(".android")
             .substringAfterLast('.')
 
-    fun installed(): List<GmsReplacement> =
+    fun installed(): List<GmsReplacement> {
+        val candidates = LinkedHashSet<String>()
+
+        // 1. Check known replacements first
+        for (pkg in KNOWN_REPLACEMENTS) {
+            if (isInstalled(pkg) && Constants.isGmsReplacement(pkg)) {
+                candidates.add(pkg)
+            }
+        }
+
+        // 2. Query sign-in service actions
+        for (action in SIGN_IN_ACTIONS) {
+            runCatching {
+                lspApp.packageManager
+                    .queryIntentServices(Intent(action), 0)
+                    .mapNotNull { it.serviceInfo?.packageName }
+                    .filter { Constants.isGmsReplacement(it) }
+                    .forEach { candidates.add(it) }
+            }
+        }
+
+        // 3. Scan installed packages ending with .gms (excluding real Google GMS)
         runCatching {
-            lspApp.packageManager
-                .queryIntentServices(Intent(SIGN_IN_SERVICE), 0)
-                .mapNotNull { it.serviceInfo?.packageName }
-                .distinct()
-                .filter { Constants.isGmsReplacement(it) }
-                .sorted()
-                .mapNotNull { describe(it) }
-        }.getOrDefault(emptyList())
+            lspApp.packageManager.getInstalledPackages(0).forEach { pi ->
+                val name = pi.packageName
+                if (Constants.isGmsReplacement(name)) {
+                    candidates.add(name)
+                }
+            }
+        }
+
+        return candidates.sorted().mapNotNull { describe(it) }
+    }
+
+    fun autoDetect(): String? = installed().firstOrNull()?.packageName
 
     fun isInstalled(packageName: String): Boolean =
         runCatching { lspApp.packageManager.getPackageInfo(packageName, 0) }.isSuccess

@@ -23,6 +23,7 @@ fun Jar.configure(variant: String) {
     manifest {
         attributes("Main-Class" to "org.lsposed.patch.LSPatch")
     }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     dependsOn(configurations.runtimeClasspath)
     from(configurations.runtimeClasspath.map { configuration ->
         configuration.map { if (it.isDirectory) it else zipTree(it) }

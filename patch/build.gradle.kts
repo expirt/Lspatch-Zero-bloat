@@ -24,4 +24,5 @@ dependencies {
     implementation(lspatch.commons.io)
     implementation(lspatch.beust.jcommander)
     implementation(lspatch.google.gson)
+    implementation(libs.smali.dexlib2)
 }

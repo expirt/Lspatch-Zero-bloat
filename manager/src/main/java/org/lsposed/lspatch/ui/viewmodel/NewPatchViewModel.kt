@@ -113,6 +113,33 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
 
     fun setDeclareFakeSignature(value: Boolean) = mutate { it.copy(declareFakeSignature = value) }
 
+    fun setUseMicroG(value: Boolean) = mutate { it.copy(useMicroG = value) }
+
+    fun setMicroGVendor(value: String) = mutate { it.copy(microGVendor = value.ifBlank { "app.revanced" }) }
+
+    fun setStorageRedirectEnabled(value: Boolean) = mutate {
+        val updated = it.copy(storageRedirectEnabled = value)
+        if (value && "android.permission.MANAGE_EXTERNAL_STORAGE" !in updated.addedPermissions) {
+            updated.copy(addedPermissions = updated.addedPermissions + "android.permission.MANAGE_EXTERNAL_STORAGE")
+        } else {
+            updated
+        }
+    }
+
+    fun setContainerPath(value: String?) = mutate { it.copy(containerPath = value) }
+
+    fun setRedirectInternal(value: Boolean) = mutate { it.copy(redirectInternal = value) }
+
+    fun setRedirectExternal(value: Boolean) = mutate { it.copy(redirectExternal = value) }
+
+    fun setRedirectDatabases(value: Boolean) = mutate { it.copy(redirectDatabases = value) }
+
+    fun setRedirectPreferences(value: Boolean) = mutate { it.copy(redirectPreferences = value) }
+
+    fun setRedirectConstructors(value: Boolean) = mutate { it.copy(redirectConstructors = value) }
+
+    fun setRedirectLogging(value: Boolean) = mutate { it.copy(redirectLogging = value) }
+
     /**
      * Adds modules to the set, keeping what is already there.
      *

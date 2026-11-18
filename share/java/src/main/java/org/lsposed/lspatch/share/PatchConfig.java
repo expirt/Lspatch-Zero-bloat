@@ -55,6 +55,18 @@ public class PatchConfig {
     public final String managerPackageName;
     public final LSPConfig lspConfig;
 
+    public final boolean storageRedirectEnabled;
+    public final String containerPath;
+    public final boolean redirectInternal;
+    public final boolean redirectExternal;
+    public final boolean redirectDatabases;
+    public final boolean redirectPreferences;
+    public final boolean redirectConstructors;
+    public final boolean redirectLogging;
+
+    public final boolean useMicroG;
+    public final String microGVendor;
+
     public PatchConfig(
             boolean useManager,
             boolean debuggable,
@@ -68,6 +80,104 @@ public class PatchConfig {
             String gmsReplacementPackage,
             boolean declareFakeSignature,
             String managerPackageName
+    ) {
+        this(
+                useManager,
+                debuggable,
+                versionCode,
+                sigBypassLevel,
+                originalSignature,
+                appComponentFactory,
+                injectDex,
+                addedPermissions,
+                injectDocumentsProvider,
+                gmsReplacementPackage,
+                declareFakeSignature,
+                managerPackageName,
+                false,
+                null,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                "app.revanced"
+        );
+    }
+
+    public PatchConfig(
+            boolean useManager,
+            boolean debuggable,
+            Integer versionCode,
+            int sigBypassLevel,
+            String originalSignature,
+            String appComponentFactory,
+            boolean injectDex,
+            String[] addedPermissions,
+            boolean injectDocumentsProvider,
+            String gmsReplacementPackage,
+            boolean declareFakeSignature,
+            String managerPackageName,
+            boolean storageRedirectEnabled,
+            String containerPath,
+            boolean redirectInternal,
+            boolean redirectExternal,
+            boolean redirectDatabases,
+            boolean redirectPreferences,
+            boolean redirectConstructors,
+            boolean redirectLogging
+    ) {
+        this(
+                useManager,
+                debuggable,
+                versionCode,
+                sigBypassLevel,
+                originalSignature,
+                appComponentFactory,
+                injectDex,
+                addedPermissions,
+                injectDocumentsProvider,
+                gmsReplacementPackage,
+                declareFakeSignature,
+                managerPackageName,
+                storageRedirectEnabled,
+                containerPath,
+                redirectInternal,
+                redirectExternal,
+                redirectDatabases,
+                redirectPreferences,
+                redirectConstructors,
+                redirectLogging,
+                false,
+                "app.revanced"
+        );
+    }
+
+    public PatchConfig(
+            boolean useManager,
+            boolean debuggable,
+            Integer versionCode,
+            int sigBypassLevel,
+            String originalSignature,
+            String appComponentFactory,
+            boolean injectDex,
+            String[] addedPermissions,
+            boolean injectDocumentsProvider,
+            String gmsReplacementPackage,
+            boolean declareFakeSignature,
+            String managerPackageName,
+            boolean storageRedirectEnabled,
+            String containerPath,
+            boolean redirectInternal,
+            boolean redirectExternal,
+            boolean redirectDatabases,
+            boolean redirectPreferences,
+            boolean redirectConstructors,
+            boolean redirectLogging,
+            boolean useMicroG,
+            String microGVendor
     ) {
         this.useManager = useManager;
         this.debuggable = debuggable;
@@ -89,6 +199,16 @@ public class PatchConfig {
         } else {
             this.managerPackageName = null;
         }
+        this.storageRedirectEnabled = storageRedirectEnabled;
+        this.containerPath = (containerPath != null && !containerPath.isEmpty()) ? containerPath : "Containers/{pkg}";
+        this.redirectInternal = redirectInternal;
+        this.redirectExternal = redirectExternal;
+        this.redirectDatabases = redirectDatabases;
+        this.redirectPreferences = redirectPreferences;
+        this.redirectConstructors = redirectConstructors;
+        this.redirectLogging = redirectLogging;
+        this.useMicroG = useMicroG;
+        this.microGVendor = (microGVendor != null && !microGVendor.isEmpty()) ? microGVendor : "app.revanced";
         this.lspConfig = LSPConfig.instance;
     }
 

@@ -9,10 +9,10 @@ import static org.lsposed.lspatch.share.Constants.PROXY_APP_COMPONENT_FACTORY;
 import com.android.tools.build.apkzlib.sign.SigningExtension;
 import com.android.tools.build.apkzlib.sign.SigningOptions;
 import com.android.tools.build.apkzlib.zip.AlignmentRules;
-import com.android.tools.build.apkzlib.zip.NestedZip;
 import com.android.tools.build.apkzlib.zip.StoredEntry;
 import com.android.tools.build.apkzlib.zip.ZFile;
 import com.android.tools.build.apkzlib.zip.ZFileOptions;
+
 import com.google.gson.Gson;
 import com.wind.meditor.core.ManifestEditor;
 import com.wind.meditor.property.AttributeItem;
@@ -28,6 +28,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.lsposed.lspatch.share.Constants;
 import org.lsposed.lspatch.share.LSPConfig;
 import org.lsposed.lspatch.share.PatchConfig;
+import org.lsposed.patch.microg.MicroGPatcher;
 import org.lsposed.patch.util.ApkSignatureHelper;
 import org.lsposed.patch.util.Logger;
 import org.lsposed.patch.util.ManifestParser;
@@ -90,9 +91,10 @@ public final class ApkPatcher {
      * which requires them to start on a 4 KiB boundary.
      */
     private static final ZFileOptions Z_FILE_OPTIONS = new ZFileOptions().setAlignmentRule(AlignmentRules.compose(
-            AlignmentRules.constantForSuffix(".so", 4096),
-            AlignmentRules.constantForSuffix(ORIGINAL_APK_ASSET_PATH, 4096)
+            AlignmentRules.constantForSuffix(".so", 16384),
+            AlignmentRules.constantForSuffix(".arsc", 4)
     ));
+
 
     private final Logger logger;
     private final PatchSpec spec;
@@ -164,7 +166,7 @@ public final class ApkPatcher {
         logger.i("Parsing original apk...");
 
         try (ZFile dstZFile = ZFile.openReadWrite(outputFile, Z_FILE_OPTIONS);
-             NestedZip srcZFile = dstZFile.addNestedZip((ignore) -> ORIGINAL_APK_ASSET_PATH, srcApkFile, false)) {
+             ZFile srcZFile = ZFile.openReadOnly(srcApkFile)) {
 
             registerSigner(dstZFile, index, total);
 
@@ -189,12 +191,22 @@ public final class ApkPatcher {
                     spec.sigBypassLevel(),
                     originalSignature,
                     manifest.appComponentFactory,
-                    spec.injectDex(),
+                    true,
                     spec.manifestOverrides().addedPermissions.toArray(new String[0]),
                     spec.manifestOverrides().injectDocumentsProvider,
                     spec.manifestOverrides().gmsReplacementPackage,
                     spec.manifestOverrides().declareFakeSignature,
-                    spec.useManager() ? spec.managerPackageName() : null);
+                    spec.useManager() ? spec.managerPackageName() : null,
+                    spec.manifestOverrides().storageRedirectEnabled,
+                    spec.manifestOverrides().containerPath,
+                    spec.manifestOverrides().redirectInternal,
+                    spec.manifestOverrides().redirectExternal,
+                    spec.manifestOverrides().redirectDatabases,
+                    spec.manifestOverrides().redirectPreferences,
+                    spec.manifestOverrides().redirectConstructors,
+                    spec.manifestOverrides().redirectLogging,
+                    spec.manifestOverrides().useMicroG,
+                    spec.manifestOverrides().microGVendor);
             byte[] configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
 
             rewriteManifest(srcZFile, dstZFile, configBytes, manifest.packageName, manifest.minSdkVersion, originalSignature, index, total);
@@ -203,7 +215,11 @@ public final class ApkPatcher {
                 addLoaderPayload(dstZFile);
                 embedModules(dstZFile, index, total);
             }
-            linkRemainingEntries(srcZFile, dstZFile);
+            copyRemainingEntries(srcZFile, dstZFile);
+
+            if (spec.manifestOverrides().useMicroG) {
+                MicroGPatcher.process(dstZFile, spec.manifestOverrides().microGVendor, logger);
+            }
 
             dstZFile.realign();
 
@@ -254,7 +270,8 @@ public final class ApkPatcher {
     private String readOriginalSignature(File srcApkFile) throws IOException {
         if (spec.sigBypassLevel() <= Constants.SIGBYPASS_LV_DISABLE
                 && spec.manifestOverrides().gmsReplacementPackage == null
-                && !spec.manifestOverrides().declareFakeSignature) {
+                && !spec.manifestOverrides().declareFakeSignature
+                && !spec.manifestOverrides().useMicroG) {
             return null;
         }
         String signature = ApkSignatureHelper.getApkSignInfo(srcApkFile.getAbsolutePath());
@@ -265,7 +282,7 @@ public final class ApkPatcher {
         return signature;
     }
 
-    private ManifestParser.Pair readManifest(NestedZip srcZFile) throws IOException {
+    private ManifestParser.Pair readManifest(ZFile srcZFile) throws IOException {
         StoredEntry manifestEntry = srcZFile.get(ANDROID_MANIFEST_XML);
         if (manifestEntry == null) {
             throw new PatchException("Provided file is not a valid apk");
@@ -275,6 +292,26 @@ public final class ApkPatcher {
             if (pair == null) {
                 throw new PatchException("Failed to parse AndroidManifest.xml");
             }
+            if (PROXY_APP_COMPONENT_FACTORY.equals(pair.appComponentFactory)) {
+                logger.i("Source APK is already patched; recovering true appComponentFactory...");
+                StoredEntry configEntry = srcZFile.get(CONFIG_ASSET_PATH);
+                String recoveredFactory = null;
+                if (configEntry != null) {
+                    try (InputStream cfgIs = configEntry.open()) {
+                        byte[] cfgBytes = cfgIs.readAllBytes();
+                        com.google.gson.JsonObject obj = new Gson().fromJson(new String(cfgBytes, StandardCharsets.UTF_8), com.google.gson.JsonObject.class);
+                        if (obj != null && obj.has("appComponentFactory") && !obj.get("appComponentFactory").isJsonNull()) {
+                            String f = obj.get("appComponentFactory").getAsString();
+                            if (f != null && !f.isEmpty() && !f.equals(PROXY_APP_COMPONENT_FACTORY)) {
+                                recoveredFactory = f;
+                            }
+                        }
+                    } catch (Throwable t) {
+                        logger.d("Failed to read previous config.json: " + t.getMessage());
+                    }
+                }
+                pair.appComponentFactory = recoveredFactory;
+            }
             logger.d("original appComponentFactory class: " + pair.appComponentFactory);
             logger.d("original minSdkVersion: " + pair.minSdkVersion);
             return pair;
@@ -282,15 +319,12 @@ public final class ApkPatcher {
     }
 
     /** Repacks a split unchanged, dropping only the signatures that no longer apply to it. */
-    private void packSplit(NestedZip srcZFile, ZFile dstZFile, int index, int total) throws IOException {
+    private void packSplit(ZFile srcZFile, ZFile dstZFile, int index, int total) throws IOException {
         logger.stage(Logger.Stage.PACKING_SPLIT, index, total);
         logger.i("Packing split apk...");
-        for (StoredEntry entry : srcZFile.entries()) {
-            String name = entry.getCentralDirectoryHeader().getName();
-            if (dstZFile.get(name) != null) continue;
-            if (isSignatureEntry(name)) continue;
-            srcZFile.addFileLink(name, name);
-        }
+        dstZFile.mergeFrom(srcZFile, name -> dstZFile.get(name) != null
+                || isSignatureEntry(name)
+                || name.equals(ORIGINAL_APK_ASSET_PATH));
     }
 
     /**
@@ -301,7 +335,7 @@ public final class ApkPatcher {
      * reads it at startup without a package manager.
      */
     private void rewriteManifest(
-            NestedZip srcZFile, ZFile dstZFile, byte[] configBytes, String packageName, int minSdkVersion,
+            ZFile srcZFile, ZFile dstZFile, byte[] configBytes, String packageName, int minSdkVersion,
             String originalSignature, int index, int total)
             throws IOException {
         logger.stage(Logger.Stage.REWRITING, index, total);
@@ -323,33 +357,41 @@ public final class ApkPatcher {
     }
 
     /**
-     * Adds the metaloader dex -- the small stub Android runs first.
-     *
-     * Normally it becomes {@code classes.dex} and the original's dex files are left in the nested
-     * copy, untouched. With {@code injectDex} the original's dex files are kept in place and the
-     * stub is appended after the last of them instead, because an app whose isolated processes load
-     * their own dex (a browser's renderer, say) needs them present in the outer apk.
+     * Adds the metaloader dex as the companion dex after the last dex file.
      */
-    private void injectLoader(NestedZip srcZFile, ZFile dstZFile, int index, int total) throws IOException {
+    private void injectLoader(ZFile srcZFile, ZFile dstZFile, int index, int total) throws IOException {
         logger.stage(Logger.Stage.INJECTING, index, total);
         logger.i("Adding metaloader dex...");
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(Constants.META_LOADER_DEX_ASSET_PATH)) {
             if (is == null) throw new PatchException("The metaloader dex is missing from this build");
-            if (!spec.injectDex()) {
-                dstZFile.add("classes.dex", is);
-            } else {
-                int dexCount = 1;
-                for (StoredEntry entry : srcZFile.entries()) {
-                    if (isDexEntry(entry.getCentralDirectoryHeader().getName())) dexCount++;
+            int maxDex = 0;
+            for (StoredEntry entry : srcZFile.entries()) {
+                String name = entry.getCentralDirectoryHeader().getName();
+                if (isDexEntry(name)) {
+                    if (isMetaloaderDex(entry)) {
+                        logger.i("Found previously injected metaloader dex (" + name + "), skipping");
+                        continue;
+                    }
+                    if (name.equals("classes.dex")) {
+                        if (maxDex < 1) maxDex = 1;
+                    } else {
+                        try {
+                            int idx = Integer.parseInt(name.substring(7, name.length() - 4));
+                            if (idx > maxDex) maxDex = idx;
+                        } catch (Throwable ignored) {}
+                    }
                 }
-                dstZFile.add("classes" + dexCount + ".dex", is);
             }
+            int stubDexIndex = maxDex + 1;
+            String stubDexName = stubDexIndex == 1 ? "classes.dex" : "classes" + stubDexIndex + ".dex";
+            dstZFile.add(stubDexName, is);
         } catch (PatchException e) {
             throw e;
         } catch (IOException e) {
             throw new PatchException("Error when adding dex", e);
         }
     }
+
 
     /** The framework itself: the loader dex and its native library, for a manager-free patch. */
     private void addLoaderPayload(ZFile dstZFile) throws IOException {
@@ -411,22 +453,29 @@ public final class ApkPatcher {
     }
 
     /**
-     * Links every remaining entry to the nested original instead of copying its bytes.
-     *
-     * This is what keeps a patched apk from being twice the size of the original. The exclusions are
-     * the entries the patch has replaced or invalidated: the rewritten manifest, the original's
-     * signatures, and -- unless the dex was injected -- the original's dex files, which are loaded
-     * from the nested copy rather than the outer apk.
+     * Copies every remaining entry from the source APK directly into the destination APK,
+     * preserving compression and alignment without embedding origin.apk.
      */
-    private void linkRemainingEntries(NestedZip srcZFile, ZFile dstZFile) throws IOException {
-        logger.d("Creating nested apk link...");
-        for (StoredEntry entry : srcZFile.entries()) {
-            String name = entry.getCentralDirectoryHeader().getName();
-            if (dstZFile.get(name) != null) continue;
-            if (!spec.injectDex() && isDexEntry(name)) continue;
-            if (name.equals(ANDROID_MANIFEST_XML)) continue;
-            if (isSignatureEntry(name)) continue;
-            srcZFile.addFileLink(name, name);
+    private void copyRemainingEntries(ZFile srcZFile, ZFile dstZFile) throws IOException {
+        logger.d("Merging remaining entries from original apk...");
+        dstZFile.mergeFrom(srcZFile, name -> dstZFile.get(name) != null
+                || isSignatureEntry(name)
+                || name.equals(ANDROID_MANIFEST_XML)
+                || name.equals(ORIGINAL_APK_ASSET_PATH)
+                || name.startsWith("assets/lspatch/")
+                || (isDexEntry(name) && isMetaloaderDex(srcZFile.get(name))));
+    }
+
+    private static boolean isMetaloaderDex(StoredEntry entry) {
+        if (entry == null) return false;
+        long size = entry.getCentralDirectoryHeader().getUncompressedSize();
+        if (size > 65536 || size <= 0) return false;
+        try (InputStream is = entry.open()) {
+            byte[] bytes = is.readAllBytes();
+            String content = new String(bytes, StandardCharsets.ISO_8859_1);
+            return content.contains("Lorg/lsposed/lspatch/metaloader/LSPAppComponentFactoryStub;");
+        } catch (Throwable t) {
+            return false;
         }
     }
 
@@ -435,9 +484,11 @@ public final class ApkPatcher {
     }
 
     private static boolean isSignatureEntry(String name) {
-        return name.startsWith("META-INF")
-                && (name.endsWith(".SF") || name.endsWith(".MF") || name.endsWith(".RSA"));
+        return name.startsWith("META-INF/")
+                && (name.endsWith(".SF") || name.endsWith(".MF") || name.endsWith(".RSA")
+                || name.endsWith(".DSA") || name.endsWith(".EC") || name.startsWith("META-INF/SIG-"));
     }
+
 
     private byte[] modifyManifestFile(InputStream is, String metadata, String packageName, int minSdkVersion, String originalSignature)
             throws IOException {
@@ -461,7 +512,15 @@ public final class ApkPatcher {
             new ManifestEditor(in, os, property).processManifest();
         }
         os.flush();
-        return renameC2dmForGmsReplacement(os.toByteArray(), spec.manifestOverrides().gmsReplacementPackage);
+        byte[] manifestBytes = os.toByteArray();
+        if (spec.manifestOverrides().useMicroG) {
+            String microGPkg = spec.manifestOverrides().microGVendor + ".android.gms";
+            manifestBytes = renameC2dmForGmsReplacement(manifestBytes, microGPkg);
+            manifestBytes = addQueriesForMicroG(manifestBytes, microGPkg);
+        } else if (spec.manifestOverrides().gmsReplacementPackage != null) {
+            manifestBytes = renameC2dmForGmsReplacement(manifestBytes, spec.manifestOverrides().gmsReplacementPackage);
+        }
+        return manifestBytes;
     }
 
     /**
@@ -512,6 +571,21 @@ public final class ApkPatcher {
                         + Constants.REAL_GMS_PACKAGE_NAME + "; give the package of an installed replacement");
             }
             addGmsReplacementSupport(property, o.gmsReplacementPackage, originalSignature);
+        }
+        if (o.useMicroG) {
+            String microGPkg = o.microGVendor + ".android.gms";
+            logger.i("MicroG integration enabled: declaring signature metadata for " + microGPkg);
+            if (originalSignature != null && !originalSignature.isEmpty()) {
+                property.addMetaData(new ModificationProperty.MetaData(
+                        microGPkg + Constants.GMS_REPLACEMENT_SIGNATURE_METADATA_SUFFIX, sha1Hex(originalSignature)));
+            }
+            property.addMetaData(new ModificationProperty.MetaData(
+                    "app.revanced.MICROG_PACKAGE_NAME", microGPkg));
+            property.addUsesPermission("android.permission.QUERY_ALL_PACKAGES");
+        }
+        if (o.storageRedirectEnabled) {
+            logger.i("Storage redirection enabled: ensuring MANAGE_EXTERNAL_STORAGE permission");
+            property.addUsesPermission("android.permission.MANAGE_EXTERNAL_STORAGE");
         }
         if (o.declareFakeSignature) {
             logger.i("Add fake signature");
@@ -584,6 +658,70 @@ public final class ApkPatcher {
             }
             super.attr(ns, name, resourceId, type, obj);
         }
+    }
+
+    private byte[] addQueriesForMicroG(byte[] manifest, String microGPkg) throws IOException {
+        AxmlWriter writer = new AxmlWriter();
+        final boolean[] hasQueries = new boolean[]{false};
+        final boolean[] hasPackage = new boolean[]{false};
+
+        AxmlReader reader = new AxmlReader(manifest);
+        reader.accept(new AxmlVisitor(writer) {
+            @Override
+            public NodeVisitor child(String ns, String name) {
+                if ("manifest".equals(name)) {
+                    return new NodeVisitor(super.child(ns, name)) {
+                        @Override
+                        public NodeVisitor child(String childNs, String childName) {
+                            if ("queries".equals(childName)) {
+                                hasQueries[0] = true;
+                                return new NodeVisitor(super.child(childNs, childName)) {
+                                    @Override
+                                    public NodeVisitor child(String pkgNs, String pkgName) {
+                                        return new NodeVisitor(super.child(pkgNs, pkgName)) {
+                                            @Override
+                                            public void attr(String aNs, String aName, int resourceId, int type, Object obj) {
+                                                if (microGPkg.equals(obj)) {
+                                                    hasPackage[0] = true;
+                                                }
+                                                super.attr(aNs, aName, resourceId, type, obj);
+                                            }
+                                        };
+                                    }
+
+                                    @Override
+                                    public void end() {
+                                        if (!hasPackage[0]) {
+                                            NodeVisitor pkgNode = super.child(null, "package");
+                                            pkgNode.attr("http://schemas.android.com/apk/res/android", "name", 0x01010003, NodeVisitor.TYPE_STRING, microGPkg);
+                                            pkgNode.end();
+                                            hasPackage[0] = true;
+                                        }
+                                        super.end();
+                                    }
+                                };
+                            }
+                            return super.child(childNs, childName);
+                        }
+
+                        @Override
+                        public void end() {
+                            if (!hasQueries[0]) {
+                                NodeVisitor queriesNode = super.child(null, "queries");
+                                NodeVisitor pkgNode = queriesNode.child(null, "package");
+                                pkgNode.attr("http://schemas.android.com/apk/res/android", "name", 0x01010003, NodeVisitor.TYPE_STRING, microGPkg);
+                                pkgNode.end();
+                                queriesNode.end();
+                                hasQueries[0] = true;
+                            }
+                            super.end();
+                        }
+                    };
+                }
+                return super.child(ns, name);
+            }
+        });
+        return writer.toByteArray();
     }
 
     /** SHA-1 of a certificate given as hex, as lower-case hex. */

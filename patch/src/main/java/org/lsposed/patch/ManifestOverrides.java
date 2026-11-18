@@ -90,6 +90,18 @@ public final class ManifestOverrides {
      */
     public final boolean declareFakeSignature;
 
+    public final boolean storageRedirectEnabled;
+    public final String containerPath;
+    public final boolean redirectInternal;
+    public final boolean redirectExternal;
+    public final boolean redirectDatabases;
+    public final boolean redirectPreferences;
+    public final boolean redirectConstructors;
+    public final boolean redirectLogging;
+
+    public final boolean useMicroG;
+    public final String microGVendor;
+
     private ManifestOverrides(Builder b) {
         this.versionCode = b.versionCode;
         this.label = b.label;
@@ -100,6 +112,16 @@ public final class ManifestOverrides {
         this.injectDocumentsProvider = b.injectDocumentsProvider;
         this.gmsReplacementPackage = b.gmsReplacementPackage;
         this.declareFakeSignature = b.declareFakeSignature;
+        this.storageRedirectEnabled = b.storageRedirectEnabled;
+        this.containerPath = b.containerPath;
+        this.redirectInternal = b.redirectInternal;
+        this.redirectExternal = b.redirectExternal;
+        this.redirectDatabases = b.redirectDatabases;
+        this.redirectPreferences = b.redirectPreferences;
+        this.redirectConstructors = b.redirectConstructors;
+        this.redirectLogging = b.redirectLogging;
+        this.useMicroG = b.useMicroG;
+        this.microGVendor = (b.microGVendor != null && !b.microGVendor.isEmpty()) ? b.microGVendor : "app.revanced";
     }
 
     /** True when nothing is overridden, so the patcher can skip the work entirely. */
@@ -107,7 +129,7 @@ public final class ManifestOverrides {
         return versionCode == null && label == null && targetSdkVersion == null
                 && extractNativeLibs == null && usesCleartextTraffic == null
                 && addedPermissions.isEmpty() && !injectDocumentsProvider && gmsReplacementPackage == null
-                && !declareFakeSignature;
+                && !declareFakeSignature && !storageRedirectEnabled && !useMicroG;
     }
 
     /**
@@ -204,6 +226,68 @@ public final class ManifestOverrides {
 
         public Builder declareFakeSignature(boolean declareFakeSignature) {
             this.declareFakeSignature = declareFakeSignature;
+            return this;
+        }
+
+        private boolean storageRedirectEnabled;
+        private String containerPath;
+        private boolean redirectInternal = true;
+        private boolean redirectExternal = true;
+        private boolean redirectDatabases = true;
+        private boolean redirectPreferences = true;
+        private boolean redirectConstructors = true;
+        private boolean redirectLogging;
+
+        public Builder storageRedirectEnabled(boolean storageRedirectEnabled) {
+            this.storageRedirectEnabled = storageRedirectEnabled;
+            return this;
+        }
+
+        public Builder containerPath(String containerPath) {
+            this.containerPath = containerPath;
+            return this;
+        }
+
+        public Builder redirectInternal(boolean redirectInternal) {
+            this.redirectInternal = redirectInternal;
+            return this;
+        }
+
+        public Builder redirectExternal(boolean redirectExternal) {
+            this.redirectExternal = redirectExternal;
+            return this;
+        }
+
+        public Builder redirectDatabases(boolean redirectDatabases) {
+            this.redirectDatabases = redirectDatabases;
+            return this;
+        }
+
+        public Builder redirectPreferences(boolean redirectPreferences) {
+            this.redirectPreferences = redirectPreferences;
+            return this;
+        }
+
+        public Builder redirectConstructors(boolean redirectConstructors) {
+            this.redirectConstructors = redirectConstructors;
+            return this;
+        }
+
+        public Builder redirectLogging(boolean redirectLogging) {
+            this.redirectLogging = redirectLogging;
+            return this;
+        }
+
+        private boolean useMicroG;
+        private String microGVendor = "app.revanced";
+
+        public Builder useMicroG(boolean useMicroG) {
+            this.useMicroG = useMicroG;
+            return this;
+        }
+
+        public Builder microGVendor(String microGVendor) {
+            this.microGVendor = (microGVendor != null && !microGVendor.isEmpty()) ? microGVendor : "app.revanced";
             return this;
         }
 

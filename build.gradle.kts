@@ -57,7 +57,8 @@ val (coreCommitCount, coreLatestTag, coreCommitHash) = FileRepositoryBuilder()
     }.getOrNull() ?: Triple(1, "1.0", "")
 
 // sync from https://github.com/JingMatrix/LSPosed/blob/master/build.gradle.kts
-val defaultManagerPackageName by extra("org.lsposed.lspatch")
+val defaultManagerPackageName by extra("org.expirt.lspatch")
+
 val apiCode by extra(102)
 val verCode by extra(commitCount)
 val verName by extra("1.2")
@@ -67,8 +68,9 @@ val coreVerHash by extra(coreCommitHash)
 val androidMinSdkVersion by extra(28)
 val androidTargetSdkVersion by extra(36)
 val androidCompileSdkVersion by extra(37)
-val androidCompileNdkVersion by extra("29.0.13113456")
+val androidCompileNdkVersion by extra("29.0.13846066")
 val androidBuildToolsVersion by extra("37.0.0")
+
 val androidSourceCompatibility by extra(JavaVersion.VERSION_21)
 val androidTargetCompatibility by extra(JavaVersion.VERSION_21)
 
@@ -220,10 +222,12 @@ fun Project.configureBaseExtension() {
     extensions.findByType(ApplicationAndroidComponentsExtension::class)?.let { androidComponents ->
         val optimizeReleaseRes = tasks.register("optimizeReleaseRes") {
             doLast {
-                val aapt2 = File(
-                    androidComponents.sdkComponents.sdkDirectory.get().asFile,
-                    "build-tools/${androidBuildToolsVersion}/aapt2"
-                )
+                val aapt2 = File("/data/user/0/com.agy/files/usr/bin/aapt2").takeIf { it.canExecute() }
+                    ?: File(
+                        androidComponents.sdkComponents.sdkDirectory.get().asFile,
+                        "build-tools/${androidBuildToolsVersion}/aapt2"
+                    )
+
                 val zip = java.nio.file.Paths.get(
                     project.layout.buildDirectory.get().asFile.path,
                     "intermediates",

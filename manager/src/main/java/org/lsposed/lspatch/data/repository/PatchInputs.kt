@@ -56,14 +56,18 @@ object PatchInputs {
             ZipFile(apk).use { zip ->
                 val entry = zip.getEntry(Constants.ORIGINAL_APK_ASSET_PATH)
                     ?: zip.getEntry(LEGACY_ORIGIN_ASSET)
-                    ?: throw FileNotFoundException("No original apk inside ${File(apk).name}")
                 val dst = workDir.resolve(File(apk).name)
-                zip.getInputStream(entry).use { input ->
-                    dst.outputStream().use { output -> input.copyTo(output) }
+                if (entry != null) {
+                    zip.getInputStream(entry).use { input ->
+                        dst.outputStream().use { output -> input.copyTo(output) }
+                    }
+                } else {
+                    File(apk).copyTo(dst, overwrite = true)
                 }
                 dst
             }
         }
+
 
         val moduleDir = workDir.resolve("modules").also { it.mkdirs() }
         // Keyed by package so a module contributing more than one entry cannot appear twice: the

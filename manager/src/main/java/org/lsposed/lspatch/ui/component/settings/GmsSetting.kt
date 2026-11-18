@@ -1,9 +1,11 @@
 package org.lsposed.lspatch.ui.component.settings
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -227,6 +231,7 @@ private fun GmsSheet(
  */
 @Composable
 private fun ReplacementField(replacement: String?, onChange: (String?) -> Unit) {
+    val context = LocalContext.current
     val onDevice = remember { GmsReplacements.installed() }
     var text by rememberSaveable { mutableStateOf(replacement.orEmpty()) }
     var listOpen by remember { mutableStateOf(false) }
@@ -252,17 +257,38 @@ private fun ReplacementField(replacement: String?, onChange: (String?) -> Unit) 
         placeholder = { Text(stringResource(R.string.patch_gms_custom_hint)) },
         isError = malformed,
         singleLine = true,
-        trailingIcon =
-            if (onDevice.isEmpty()) null
-            else
-                ({
+        trailingIcon = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(end = 4.dp),
+            ) {
+                TextButton(
+                    onClick = {
+                        val detected = GmsReplacements.autoDetect()
+                        if (detected != null) {
+                            accept(detected)
+                            Toast.makeText(context, context.getString(R.string.patch_gms_detected, detected), Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, context.getString(R.string.patch_gms_not_detected), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.patch_gms_auto_detect),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                if (onDevice.isNotEmpty()) {
                     IconButton(onClick = { listOpen = !listOpen }) {
                         Icon(
                             if (listOpen) Icons.Rounded.ArrowDropUp else Icons.Rounded.ArrowDropDown,
                             contentDescription = null,
                         )
                     }
-                }),
+                }
+            }
+        },
         supportingText =
             when {
                 malformed -> ({ Text(stringResource(R.string.patch_gms_custom_invalid)) })

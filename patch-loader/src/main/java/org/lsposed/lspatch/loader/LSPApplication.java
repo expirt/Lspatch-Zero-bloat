@@ -148,6 +148,10 @@ public class LSPApplication {
         // does nothing unless the redirect armed, which keeps the choice read in one place.
         GmsRedirector.answerAvailabilityChecks(appLoadedApk.getClassLoader());
 
+        if (config.optBoolean("useMicroG")) {
+            MicroGSupport.init(config.optString("microGVendor", "app.revanced"));
+        }
+
         // Only after the app class loader exists, and before installContentProviders runs on return
         // from makeApplication, so the injected DocumentsProvider is resolvable when the platform
         // instantiates it.
@@ -267,6 +271,10 @@ public class LSPApplication {
             GmsRedirector.activate(context, gmsReplacementPackage);
         }
 
+        if (config.optBoolean("storageRedirectEnabled", false)) {
+            StorageRedirector.activate(context, config);
+        }
+
         // Register the resource directory for legacy resource hooking. The LoadedApk constructor hook
         // normally does this, but the target's LoadedApk was hand-built before that hook existed.
         // Guarded on its own: registering the res dir loads XResources, whose runtime superclass may be
@@ -310,34 +318,46 @@ public class LSPApplication {
             Log.i(TAG, "Signature bypass level: " + config.optInt("sigBypassLevel"));
 
             Path originPath = Paths.get(appInfo.dataDir, "cache/lspatch/origin/");
-            Path cacheApkPath;
+            Path cacheApkPath = null;
             try (ZipFile sourceFile = new ZipFile(appInfo.sourceDir)) {
-                cacheApkPath = originPath.resolve(sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc() + ".apk");
-            }
-
-            appInfo.sourceDir = cacheApkPath.toString();
-            appInfo.publicSourceDir = cacheApkPath.toString();
-
-            if (!Files.exists(cacheApkPath)) {
-                Log.i(TAG, "Extract original apk");
-                FileUtils.deleteFolderIfExists(originPath);
-                Files.createDirectories(originPath);
-                try (InputStream is = baseClassLoader.getResourceAsStream(ORIGINAL_APK_ASSET_PATH)) {
-                    Files.copy(is, cacheApkPath);
+                var entry = sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH);
+                if (entry != null) {
+                    cacheApkPath = originPath.resolve(entry.getCrc() + ".apk");
                 }
             }
-            cacheApkPath.toFile().setWritable(false);
+
+            if (cacheApkPath != null) {
+                appInfo.sourceDir = cacheApkPath.toString();
+                appInfo.publicSourceDir = cacheApkPath.toString();
+
+                if (!Files.exists(cacheApkPath)) {
+                    Log.i(TAG, "Extract original apk");
+                    FileUtils.deleteFolderIfExists(originPath);
+                    Files.createDirectories(originPath);
+                    try (InputStream is = baseClassLoader.getResourceAsStream(ORIGINAL_APK_ASSET_PATH)) {
+                        Files.copy(is, cacheApkPath);
+                    }
+                }
+                cacheApkPath.toFile().setWritable(false);
+            } else {
+                Log.i(TAG, "Running directly from installed apk (zero-bloat mode)");
+            }
 
             // The patched manifest names the metaloader stub as the AppComponentFactory, so appInfo has
             // to be pointed back at whatever the original declared -- and at nothing when it declared
             // none, since the stub class is absent from the original apk. A packed app may in turn name
             // a factory it does not actually ship, which is dropped the same way.
+            Path apkToCheck = cacheApkPath != null ? cacheApkPath : Paths.get(appInfo.sourceDir);
             var originalFactory = config.has("appComponentFactory") ? config.optString("appComponentFactory") : null;
-            if (originalFactory != null && !originalApkHasClass(cacheApkPath, originalFactory)) {
+            if (originalFactory != null && (originalFactory.isEmpty() || originalFactory.contains("LSPAppComponentFactoryStub"))) {
+                originalFactory = null;
+            }
+            if (originalFactory != null && !originalApkHasClass(apkToCheck, originalFactory)) {
                 Log.w(TAG, "Original AppComponentFactory not found: " + originalFactory);
                 originalFactory = null;
             }
             appInfo.appComponentFactory = originalFactory;
+
 
             var mPackages = (Map<?, ?>) XposedHelpers.getObjectField(activityThread, "mPackages");
             mPackages.remove(appInfo.packageName);

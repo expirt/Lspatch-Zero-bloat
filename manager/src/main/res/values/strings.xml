@@ -330,4 +330,38 @@
     <string name="patch_gms_custom_invalid">Must be a replacement’s own package, ending in .gms.</string>
     <string name="patch_gms_installed">installed on this device</string>
     <string name="patch_gms_version_code">build %1$d</string>
+    <string name="patch_gms_auto_detect">Auto detect</string>
+    <string name="patch_gms_detected">Detected %1$s</string>
+    <string name="patch_gms_not_detected">No microG service detected</string>
+
+    <!-- Storage Redirection -->
+    <string name="patch_storage_redirect">Storage Redirection</string>
+    <string name="patch_storage_redirect_desc">Redirect app data and external storage to custom container</string>
+    <string name="patch_storage_redirect_why">Isolates application storage into a portable directory, preventing clutter and keeping app data neatly containerized.</string>
+    <string name="patch_storage_redirect_enabled">Enabled (%1$s)</string>
+    <string name="patch_storage_redirect_disabled">Disabled</string>
+    <string name="patch_storage_enable_card">Enable Storage Redirection</string>
+    <string name="patch_storage_enable_card_desc">Map app internal files, databases, and SD card directories to a unified container.</string>
+    <string name="patch_storage_container_path">Container Directory</string>
+    <string name="patch_storage_container_path_hint">Containers/{pkg}</string>
+    <string name="patch_storage_categories">Redirection Categories</string>
+    <string name="patch_storage_cat_internal">Internal Storage</string>
+    <string name="patch_storage_cat_internal_desc">Redirect /data/data/&lt;pkg&gt; to container</string>
+    <string name="patch_storage_cat_external">External Storage</string>
+    <string name="patch_storage_cat_external_desc">Redirect /sdcard to container</string>
+    <string name="patch_storage_cat_databases">Databases</string>
+    <string name="patch_storage_cat_databases_desc">Redirect SQLite database paths</string>
+    <string name="patch_storage_cat_preferences">SharedPreferences</string>
+    <string name="patch_storage_cat_preferences_desc">Redirect shared preferences</string>
+    <string name="patch_storage_cat_constructors">File Constructors</string>
+    <string name="patch_storage_cat_constructors_desc">Redirect File &amp; stream instantiation</string>
+    <string name="patch_storage_cat_logging">Redirection Logging</string>
+    <string name="patch_storage_cat_logging_desc">Log redirected paths to &lt;container&gt;/redirect.log</string>
+    <string name="patch_storage_needs_permission">Requires all files access (MANAGE_EXTERNAL_STORAGE). Tap to add.</string>
+
+    <!-- MicroG Integration -->
+    <string name="patch_microg">MicroG integration</string>
+    <string name="patch_microg_desc">Rewrites Google Play Services references at build time to use MicroG (ported from Morphe)</string>
+    <string name="patch_microg_vendor">MicroG Vendor</string>
+    <string name="patch_microg_vendor_desc">Vendor package prefix (default: app.revanced)</string>
 </resources>

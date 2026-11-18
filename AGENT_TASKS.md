@@ -1,0 +1,27 @@
+# AGENT TASKS & MILESTONES
+
+- [x] **Milestone 0: Implementation & Local Build**
+  - [x] Zero-bloat in-place patching
+  - [x] MicroG streaming patcher
+  - [x] Storage redirection
+  - [x] Compose UI fix
+  - [x] Build Manager APK and Standalone JAR
+  - [x] Test installation on local Android device via pm install
+- [x] **Milestone 1: Project Documentation & Tracking Setup**
+  - [x] Write custom README.md with zero-bloat documentation & user disclaimer
+  - [x] Initialize AGENT_PROGRESS.md
+  - [x] Initialize AGENT_NOTES.md
+  - [x] Initialize AGENT_TASKS.md
+  - [x] Initialize AGENT_TESTS.md
+- [ ] **Milestone 2: Git Repository Sync**
+  - [ ] Configure git user info for repository
+  - [ ] Update remote `origin` to authenticated GitHub fork `https://github.com/expirt/Lspatch-Zero-bloat.git`
+  - [ ] Stage all modified and untracked code files
+  - [ ] Commit with clean descriptive commit message
+  - [ ] Push to `master` branch on `expirt/Lspatch-Zero-bloat`
+  - [ ] Verify repository commit on GitHub
+- [ ] **Milestone 3: Publish GitHub Release**
+  - [ ] Create GitHub Release `v1.2-492` via REST API
+  - [ ] Upload `out/release/manager-v1.2-492-release.apk`
+  - [ ] Upload `out/release/lspatch-v1.2-492-release.jar`
+  - [ ] Verify release assets on GitHub

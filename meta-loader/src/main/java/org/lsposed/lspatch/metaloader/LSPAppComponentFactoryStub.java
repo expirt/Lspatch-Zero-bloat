@@ -149,11 +149,12 @@ public class LSPAppComponentFactoryStub extends AppComponentFactory {
      * correctly retargeted app keeps loading from the manager it was told about.
      */
     private static String[] managerCandidates(String recorded) {
-        if (recorded == null || recorded.isEmpty() || recorded.equals(Constants.MANAGER_PACKAGE_NAME)) {
-            return new String[]{Constants.MANAGER_PACKAGE_NAME};
+        if (recorded == null || recorded.isEmpty()) {
+            return new String[]{Constants.MANAGER_PACKAGE_NAME, "org.expirt.lspatch", "io.github.expirt.lspatch", "org.lsposed.lspatch"};
         }
-        return new String[]{recorded, Constants.MANAGER_PACKAGE_NAME};
+        return new String[]{recorded, Constants.MANAGER_PACKAGE_NAME, "org.expirt.lspatch", "io.github.expirt.lspatch", "org.lsposed.lspatch"};
     }
+
 
     private static ApplicationInfo getApplicationInfoOrNull(IPackageManager ipm, String packageName, int userId) {
         try {
