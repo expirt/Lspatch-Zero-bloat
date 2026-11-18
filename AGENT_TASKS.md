@@ -13,15 +13,15 @@
   - [x] Initialize AGENT_NOTES.md
   - [x] Initialize AGENT_TASKS.md
   - [x] Initialize AGENT_TESTS.md
-- [ ] **Milestone 2: Git Repository Sync**
-  - [ ] Configure git user info for repository
-  - [ ] Update remote `origin` to authenticated GitHub fork `https://github.com/expirt/Lspatch-Zero-bloat.git`
-  - [ ] Stage all modified and untracked code files
-  - [ ] Commit with clean descriptive commit message
-  - [ ] Push to `master` branch on `expirt/Lspatch-Zero-bloat`
-  - [ ] Verify repository commit on GitHub
-- [ ] **Milestone 3: Publish GitHub Release**
-  - [ ] Create GitHub Release `v1.2-492` via REST API
-  - [ ] Upload `out/release/manager-v1.2-492-release.apk`
-  - [ ] Upload `out/release/lspatch-v1.2-492-release.jar`
-  - [ ] Verify release assets on GitHub
+- [x] **Milestone 2: Git Repository Sync**
+  - [x] Configure git user info for repository
+  - [x] Update remote `origin` to authenticated GitHub fork `https://github.com/expirt/Lspatch-Zero-bloat.git`
+  - [x] Stage all modified and untracked code files
+  - [x] Commit with clean descriptive commit message
+  - [x] Push to `master` branch on `expirt/Lspatch-Zero-bloat`
+  - [x] Verify repository commit on GitHub
+- [x] **Milestone 3: Publish GitHub Release**
+  - [x] Create GitHub Release `v1.2-492` via REST API
+  - [x] Upload `out/release/manager-v1.2-492-release.apk`
+  - [x] Upload `out/release/lspatch-v1.2-492-release.jar`
+  - [x] Verify release assets on GitHub
