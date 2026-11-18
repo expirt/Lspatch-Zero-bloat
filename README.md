@@ -42,7 +42,7 @@ Ported from Storage Redirection Patcher directly into the loader:
 - **Android 14 BAL Compliance:** Fixed Android 14 background activity start restrictions by prompting for `MANAGE_EXTERNAL_STORAGE` through foreground Activity lifecycle hooks on first launch.
 
 ### 4. Memory & Performance Fixes for Large APKs
-- **OutOfMemoryError Prevention:** Eliminated redundant in-memory byte buffer cloning (`is.readAllBytes()`) in `apkzlib`'s `ZFile.mergeFrom`, allowing massive APKs (such as 680MB+ Minecraft) to patch on Android devices without crashing the JVM.
+- **OutOfMemoryError Prevention:** Eliminated redundant in-memory byte buffer cloning (`is.readAllBytes()`) in `apkzlib`'s `ZFile.mergeFrom`, allowing massive APKs to patch on Android devices without crashing the JVM.
 - **Compose UI Measurement Fix:** Fixed an `IllegalStateException` crash in the Manager caused by nested scrolling containers measuring infinite constraints.
 - **Fat JAR Build Fix:** Configured `DuplicatesStrategy.EXCLUDE` to prevent collisions on duplicate license files during packaging.
 
