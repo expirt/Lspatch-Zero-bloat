@@ -21,3 +21,4 @@ libxposed
 # Output of the Eclipse/JDT language server, which several modules trigger
 bin/
 .kotlin/
+AGENT_*.md
