@@ -57,26 +57,6 @@ Download the pre-compiled APK and standalone CLI JAR from the [Releases](https:/
 
 ---
 
-## Building from Source
-
-Build directly on native Android (e.g. via terminal in Antigravity or Termux) or on Linux:
-
-```bash
-# Clone with submodules
-git clone --recurse-submodules https://github.com/expirt/Lspatch-Zero-bloat.git
-cd Lspatch-Zero-bloat
-
-# Build both Manager APK and Standalone JAR
-TMPDIR=/data/user/0/com.agy/files/usr/tmp \
-GRADLE_USER_HOME=/storage/emulated/0/projects/.gradle \
-./gradlew -Djava.io.tmpdir=/data/user/0/com.agy/files/usr/tmp \
-    :jar:buildRelease :manager:buildRelease
-```
-
-Built outputs will be placed in `out/release/`.
-
----
-
 ## Disclaimer & Support Notice
 
 > [!WARNING]
