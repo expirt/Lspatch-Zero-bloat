@@ -92,6 +92,7 @@ public final class ManifestOverrides {
 
     public final boolean storageRedirectEnabled;
     public final String containerPath;
+    public final boolean storageSpoofing;
     public final boolean redirectInternal;
     public final boolean redirectExternal;
     public final boolean redirectDatabases;
@@ -101,6 +102,11 @@ public final class ManifestOverrides {
 
     public final boolean useMicroG;
     public final String microGVendor;
+
+    public final List<String> keepAbis;
+    public final boolean sslUnpinning;
+    public final boolean crashDebugger;
+    public final List<String> customRules;
 
     private ManifestOverrides(Builder b) {
         this.versionCode = b.versionCode;
@@ -114,6 +120,7 @@ public final class ManifestOverrides {
         this.declareFakeSignature = b.declareFakeSignature;
         this.storageRedirectEnabled = b.storageRedirectEnabled;
         this.containerPath = b.containerPath;
+        this.storageSpoofing = b.storageSpoofing;
         this.redirectInternal = b.redirectInternal;
         this.redirectExternal = b.redirectExternal;
         this.redirectDatabases = b.redirectDatabases;
@@ -122,14 +129,29 @@ public final class ManifestOverrides {
         this.redirectLogging = b.redirectLogging;
         this.useMicroG = b.useMicroG;
         this.microGVendor = (b.microGVendor != null && !b.microGVendor.isEmpty()) ? b.microGVendor : "app.revanced";
+        this.keepAbis = Collections.unmodifiableList(new ArrayList<>(b.keepAbis));
+        this.sslUnpinning = b.sslUnpinning;
+        this.crashDebugger = b.crashDebugger;
+        this.customRules = Collections.unmodifiableList(new ArrayList<>(b.customRules));
     }
 
     /** True when nothing is overridden, so the patcher can skip the work entirely. */
     public boolean isEmpty() {
-        return versionCode == null && label == null && targetSdkVersion == null
-                && extractNativeLibs == null && usesCleartextTraffic == null
-                && addedPermissions.isEmpty() && !injectDocumentsProvider && gmsReplacementPackage == null
-                && !declareFakeSignature && !storageRedirectEnabled && !useMicroG;
+        return versionCode == null
+                && label == null
+                && targetSdkVersion == null
+                && extractNativeLibs == null
+                && usesCleartextTraffic == null
+                && addedPermissions.isEmpty()
+                && !injectDocumentsProvider
+                && gmsReplacementPackage == null
+                && !declareFakeSignature
+                && !storageRedirectEnabled
+                && !useMicroG
+                && keepAbis.isEmpty()
+                && !sslUnpinning
+                && !crashDebugger
+                && customRules.isEmpty();
     }
 
     /**
@@ -218,9 +240,8 @@ public final class ManifestOverrides {
         }
 
         public Builder gmsReplacementPackage(String gmsReplacementPackage) {
-            this.gmsReplacementPackage = (gmsReplacementPackage != null && !gmsReplacementPackage.isEmpty())
-                    ? gmsReplacementPackage
-                    : null;
+            this.gmsReplacementPackage =
+                    (gmsReplacementPackage != null && !gmsReplacementPackage.isEmpty()) ? gmsReplacementPackage : null;
             return this;
         }
 
@@ -231,6 +252,8 @@ public final class ManifestOverrides {
 
         private boolean storageRedirectEnabled;
         private String containerPath;
+        private boolean storageSpoofing = true;
+        private List<String> customRules = Collections.emptyList();
         private boolean redirectInternal = true;
         private boolean redirectExternal = true;
         private boolean redirectDatabases = true;
@@ -240,11 +263,22 @@ public final class ManifestOverrides {
 
         public Builder storageRedirectEnabled(boolean storageRedirectEnabled) {
             this.storageRedirectEnabled = storageRedirectEnabled;
+            this.storageSpoofing = storageRedirectEnabled;
             return this;
         }
 
         public Builder containerPath(String containerPath) {
             this.containerPath = containerPath;
+            return this;
+        }
+
+        public Builder storageSpoofing(boolean storageSpoofing) {
+            this.storageSpoofing = storageSpoofing;
+            return this;
+        }
+
+        public Builder customRules(List<String> customRules) {
+            this.customRules = (customRules != null) ? customRules : Collections.emptyList();
             return this;
         }
 
@@ -281,6 +315,10 @@ public final class ManifestOverrides {
         private boolean useMicroG;
         private String microGVendor = "app.revanced";
 
+        private List<String> keepAbis = Collections.emptyList();
+        private boolean sslUnpinning;
+        private boolean crashDebugger;
+
         public Builder useMicroG(boolean useMicroG) {
             this.useMicroG = useMicroG;
             return this;
@@ -288,6 +326,21 @@ public final class ManifestOverrides {
 
         public Builder microGVendor(String microGVendor) {
             this.microGVendor = (microGVendor != null && !microGVendor.isEmpty()) ? microGVendor : "app.revanced";
+            return this;
+        }
+
+        public Builder keepAbis(List<String> keepAbis) {
+            this.keepAbis = (keepAbis != null) ? keepAbis : Collections.emptyList();
+            return this;
+        }
+
+        public Builder sslUnpinning(boolean sslUnpinning) {
+            this.sslUnpinning = sslUnpinning;
+            return this;
+        }
+
+        public Builder crashDebugger(boolean crashDebugger) {
+            this.crashDebugger = crashDebugger;
             return this;
         }
 

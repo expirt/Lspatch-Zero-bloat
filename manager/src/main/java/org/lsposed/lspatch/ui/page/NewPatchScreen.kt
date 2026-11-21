@@ -59,8 +59,11 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Http
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.RemoveModerator
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -136,6 +139,7 @@ import org.lsposed.lspatch.ui.component.DetailTopBar
 import org.lsposed.lspatch.ui.component.PatchLog
 import org.lsposed.lspatch.ui.component.PatchStepList
 import org.lsposed.lspatch.ui.component.rememberExportApk
+import org.lsposed.lspatch.ui.component.settings.AbiStripperSetting
 import org.lsposed.lspatch.ui.component.settings.GmsSetting
 import org.lsposed.lspatch.ui.component.settings.KeystoreSetting
 import org.lsposed.lspatch.ui.component.settings.StorageRedirectSetting
@@ -357,8 +361,13 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
                         onToggleRedirectPreferences = viewModel::setRedirectPreferences,
                         onToggleRedirectConstructors = viewModel::setRedirectConstructors,
                         onToggleRedirectLogging = viewModel::setRedirectLogging,
+                        onToggleStorageSpoofing = viewModel::setStorageSpoofing,
+                        onCustomRulesChange = viewModel::setCustomRules,
                         onToggleMicroG = viewModel::setUseMicroG,
                         onMicroGVendorChange = viewModel::setMicroGVendor,
+                        onKeepAbis = viewModel::setKeepAbis,
+                        onToggleSslUnpinning = viewModel::setSslUnpinning,
+                        onToggleCrashDebugger = viewModel::setCrashDebugger,
                     )
                 else ->
                     Column(
@@ -416,8 +425,13 @@ private fun ConfigureBody(
     onToggleRedirectPreferences: (Boolean) -> Unit,
     onToggleRedirectConstructors: (Boolean) -> Unit,
     onToggleRedirectLogging: (Boolean) -> Unit,
+    onToggleStorageSpoofing: (Boolean) -> Unit,
+    onCustomRulesChange: (List<String>) -> Unit,
     onToggleMicroG: (Boolean) -> Unit,
     onMicroGVendorChange: (String) -> Unit,
+    onKeepAbis: (List<String>) -> Unit,
+    onToggleSslUnpinning: (Boolean) -> Unit,
+    onToggleCrashDebugger: (Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHost = LocalSnackbarHost.current
@@ -565,6 +579,8 @@ private fun ConfigureBody(
                 StorageRedirectSetting(
                     enabled = request.storageRedirectEnabled,
                     containerPath = request.containerPath,
+                    storageSpoofing = request.storageSpoofing,
+                    customRules = request.customRules,
                     redirectInternal = request.redirectInternal,
                     redirectExternal = request.redirectExternal,
                     redirectDatabases = request.redirectDatabases,
@@ -574,6 +590,8 @@ private fun ConfigureBody(
                     needsPermission = "android.permission.MANAGE_EXTERNAL_STORAGE" !in request.addedPermissions,
                     onToggleEnabled = onToggleStorageRedirect,
                     onContainerPathChange = onContainerPathChange,
+                    onToggleSpoofing = onToggleStorageSpoofing,
+                    onCustomRulesChange = onCustomRulesChange,
                     onToggleInternal = onToggleRedirectInternal,
                     onToggleExternal = onToggleRedirectExternal,
                     onToggleDatabases = onToggleRedirectDatabases,
@@ -613,6 +631,24 @@ private fun ConfigureBody(
                     subtitle = stringResource(R.string.patch_inject_dex_desc),
                     checked = request.injectDex,
                     onCheckedChange = onInjectDex,
+                )
+                AbiStripperSetting(
+                    keepAbis = request.keepAbis,
+                    onChange = onKeepAbis,
+                )
+                ToggleRow(
+                    title = stringResource(R.string.patch_ssl_unpin),
+                    icon = Icons.Rounded.Security,
+                    subtitle = stringResource(R.string.patch_ssl_unpin_desc),
+                    checked = request.sslUnpinning,
+                    onCheckedChange = onToggleSslUnpinning,
+                )
+                ToggleRow(
+                    title = stringResource(R.string.patch_crash_debugger),
+                    icon = Icons.Rounded.NotificationsActive,
+                    subtitle = stringResource(R.string.patch_crash_debugger_desc),
+                    checked = request.crashDebugger,
+                    onCheckedChange = onToggleCrashDebugger,
                 )
                 GroupDivider()
                 // Manifest overrides: attributes written into the patched apk's manifest rather than
@@ -883,6 +919,15 @@ private fun advancedChips(request: PatchRequest): List<OptionChipData> = buildLi
     }
     if (request.useMicroG) {
         add(OptionChipData(stringResource(R.string.patch_microg), true, Icons.Rounded.CloudSync))
+    }
+    if (request.keepAbis.isNotEmpty()) {
+        add(OptionChipData(request.keepAbis.joinToString("/"), true, Icons.Rounded.Memory))
+    }
+    if (request.sslUnpinning) {
+        add(OptionChipData(stringResource(R.string.patch_ssl_unpin), true, Icons.Rounded.Security))
+    }
+    if (request.crashDebugger) {
+        add(OptionChipData(stringResource(R.string.patch_crash_debugger), true, Icons.Rounded.NotificationsActive))
     }
     if (!MyKeyStore.useDefault) {
         add(OptionChipData(stringResource(R.string.settings_keystore_custom), true, Icons.Outlined.Ballot))

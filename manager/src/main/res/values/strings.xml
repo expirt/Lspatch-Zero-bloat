@@ -357,6 +357,11 @@
     <string name="patch_storage_cat_constructors_desc">Redirect File &amp; stream instantiation</string>
     <string name="patch_storage_cat_logging">Redirection Logging</string>
     <string name="patch_storage_cat_logging_desc">Log redirected paths to &lt;container&gt;/redirect.log</string>
+    <string name="patch_storage_cat_spoofing">Transparent Path Spoofing</string>
+    <string name="patch_storage_cat_spoofing_desc">App sees clean virtual paths while physical I/O routes to container/custom paths</string>
+    <string name="patch_storage_custom_rules">Custom Path Mappings</string>
+    <string name="patch_storage_custom_rules_hint">virtual=real (one per line)</string>
+    <string name="patch_storage_custom_rules_desc">Map specific virtual folders to custom physical directories before container redirection.</string>
     <string name="patch_storage_needs_permission">Requires all files access (MANAGE_EXTERNAL_STORAGE). Tap to add.</string>
 
     <!-- MicroG Integration -->
@@ -364,4 +369,30 @@
     <string name="patch_microg_desc">Rewrites Google Play Services references at build time to use MicroG (ported from Morphe)</string>
     <string name="patch_microg_vendor">MicroG Vendor</string>
     <string name="patch_microg_vendor_desc">Vendor package prefix (default: app.revanced)</string>
+
+    <!-- Architecture Stripper / APK Slimmer -->
+    <string name="patch_abi_strip">APK Slimmer (ABI Stripper)</string>
+    <string name="patch_abi_strip_desc">Strip unused native architectures from APK to drastically reduce file size</string>
+    <string name="patch_abi_all">Keep all ABIs (Default)</string>
+    <string name="patch_abi_all_desc">Do not strip any native libraries</string>
+    <string name="patch_abi_arm64">arm64-v8a only (Modern 64-bit)</string>
+    <string name="patch_abi_arm64_desc">Keep only 64-bit ARM; removes 32-bit and x86 bloat</string>
+    <string name="patch_abi_arm32">armeabi-v7a only (Legacy 32-bit)</string>
+    <string name="patch_abi_arm32_desc">Keep only 32-bit ARM binaries</string>
+    <string name="patch_abi_arm_both">ARM only (arm64 + armeabi-v7a)</string>
+    <string name="patch_abi_arm_both_desc">Strip x86 and x86_64 desktop libraries</string>
+
+    <!-- SSL Unpinning -->
+    <string name="patch_ssl_unpin">Bypass SSL Pinning</string>
+    <string name="patch_ssl_unpin_desc">Trust user certificates and hook SSL verification for HTTPS traffic inspection (mitmproxy, Burp)</string>
+
+    <!-- Crash Debugger -->
+    <string name="patch_crash_debugger">Crash Debugger</string>
+    <string name="patch_crash_debugger_desc">Capture uncaught exceptions and post a notification with the crash log (no floating icon)</string>
+
+    <!-- MicroG Dynamic Monitor -->
+    <string name="manage_microg_monitor_title">Monitor Google Sign-In</string>
+    <string name="manage_microg_monitor_active">Active — Logging auth &amp; MicroG IPC to logcat. Tap to disable.</string>
+    <string name="manage_microg_monitor_inactive">Inactive — Tap to turn on real-time Google Sign-In logcat monitoring.</string>
+    <string name="manage_view_signin_log">View Google Sign-In Log</string>
 </resources>

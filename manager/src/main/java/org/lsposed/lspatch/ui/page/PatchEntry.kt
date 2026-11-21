@@ -83,6 +83,8 @@ suspend fun rePatchRequestFor(
         declareFakeSignature = config?.declareFakeSignature ?: false,
         storageRedirectEnabled = config?.storageRedirectEnabled ?: false,
         containerPath = config?.containerPath,
+        storageSpoofing = config?.storageSpoofing ?: (config?.storageRedirectEnabled ?: true),
+        customRules = config?.customRules?.toList() ?: emptyList(),
         redirectInternal = config?.redirectInternal ?: true,
         redirectExternal = config?.redirectExternal ?: true,
         redirectDatabases = config?.redirectDatabases ?: true,

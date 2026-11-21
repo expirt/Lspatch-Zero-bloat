@@ -3,16 +3,14 @@ package org.lsposed.patch;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
-
-import org.lsposed.patch.util.JavaLogger;
-import org.lsposed.patch.util.Logger;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.lsposed.patch.util.JavaLogger;
+import org.lsposed.patch.util.Logger;
 
 /**
  * The command-line front end.
@@ -29,95 +27,195 @@ public class LSPatch {
     @Parameter(description = "apks")
     private List<String> apkPaths = new ArrayList<>();
 
-    @Parameter(names = {"-h", "--help"}, help = true, order = 0, description = "Print this message")
+    @Parameter(
+            names = {"-h", "--help"},
+            help = true,
+            order = 0,
+            description = "Print this message")
     private boolean help = false;
 
-    @Parameter(names = {"-o", "--output"}, description = "Output directory")
+    @Parameter(
+            names = {"-o", "--output"},
+            description = "Output directory")
     private String outputPath = ".";
 
-    @Parameter(names = {"-f", "--force"}, description = "Force overwrite exists output file")
+    @Parameter(
+            names = {"-f", "--force"},
+            description = "Force overwrite exists output file")
     private boolean forceOverwrite = false;
 
-    @Parameter(names = {"-d", "--debuggable"}, description = "Set app to be debuggable")
+    @Parameter(
+            names = {"-d", "--debuggable"},
+            description = "Set app to be debuggable")
     private boolean debuggableFlag = false;
 
-    @Parameter(names = {"-l", "--sigbypasslv"}, description = "Signature bypass level. 0 (disable), 1 (pm), 2 (pm+openat), 3 (pm+openat+svc, instruments raw-syscall apk reads; patches native code, so an app that verifies its own code may detect it -- prefer 2 unless it is not enough). default 0")
+    @Parameter(
+            names = {"-l", "--sigbypasslv"},
+            description =
+                    "Signature bypass level. 0 (disable), 1 (pm), 2 (pm+openat), 3 (pm+openat+svc, instruments raw-syscall apk reads; patches native code, so an app that verifies its own code may detect it -- prefer 2 unless it is not enough). default 0")
     private int sigbypassLevel = 0;
 
-    @Parameter(names = {"--injectdex"}, description = "Inject directly the loder dex file into the original application package")
+    @Parameter(
+            names = {"--injectdex"},
+            description = "Inject directly the loder dex file into the original application package")
     private boolean injectDex = false;
 
-    @Parameter(names = {"-k", "--keystore"}, arity = 4, description = "Set custom signature keystore. Followed by 4 arguments: keystore path, keystore password, keystore alias, keystore alias password")
+    @Parameter(
+            names = {"-k", "--keystore"},
+            arity = 4,
+            description =
+                    "Set custom signature keystore. Followed by 4 arguments: keystore path, keystore password, keystore alias, keystore alias password")
     private List<String> keystoreArgs = Arrays.asList(null, "123456", "key0", "123456");
 
-    @Parameter(names = {"--manager"}, description = "Use manager (Cannot work with embedding modules)")
+    @Parameter(
+            names = {"--manager"},
+            description = "Use manager (Cannot work with embedding modules)")
     private boolean useManager = false;
 
-    @Parameter(names = {"--manager-package"}, description = "The manager package a manager-mode app binds to at runtime (defaults to the built-in manager). Set this to match a manager reinstalled under a custom package name.")
+    @Parameter(
+            names = {"--manager-package"},
+            description =
+                    "The manager package a manager-mode app binds to at runtime (defaults to the built-in manager). Set this to match a manager reinstalled under a custom package name.")
     private String managerPackageName = null;
 
-    @Parameter(names = {"--version-code"}, description = "Set the patched app's versionCode to this value (e.g. 1, so a later build can be installed over it)")
+    @Parameter(
+            names = {"--version-code"},
+            description =
+                    "Set the patched app's versionCode to this value (e.g. 1, so a later build can be installed over it)")
     private Integer versionCodeOverride = null;
 
-    @Parameter(names = {"-v", "--verbose"}, description = "Verbose output")
+    @Parameter(
+            names = {"-v", "--verbose"},
+            description = "Verbose output")
     private boolean verbose = false;
 
-    @Parameter(names = {"-m", "--embed"}, description = "Embed provided modules to apk")
+    @Parameter(
+            names = {"-m", "--embed"},
+            description = "Embed provided modules to apk")
     private List<String> modules = new ArrayList<>();
 
-    @Parameter(names = {"--name"}, description = "Override the patched app's launcher label")
+    @Parameter(
+            names = {"--name"},
+            description = "Override the patched app's launcher label")
     private String labelOverride = null;
 
-    @Parameter(names = {"--target-sdk"}, description = "Override the patched app's targetSdkVersion")
+    @Parameter(
+            names = {"--target-sdk"},
+            description = "Override the patched app's targetSdkVersion")
     private Integer targetSdkOverride = null;
 
-    @Parameter(names = {"--extract-libs"}, description = "Force android:extractNativeLibs=true")
+    @Parameter(
+            names = {"--extract-libs"},
+            description = "Force android:extractNativeLibs=true")
     private boolean extractNativeLibs = false;
 
-    @Parameter(names = {"--cleartext"}, description = "Force android:usesCleartextTraffic=true")
+    @Parameter(
+            names = {"--cleartext"},
+            description = "Force android:usesCleartextTraffic=true")
     private boolean usesCleartextTraffic = false;
 
-    @Parameter(names = {"--add-permission"}, description = "Add a <uses-permission> to the manifest (repeatable). A bare name is prefixed with android.permission.")
+    @Parameter(
+            names = {"--add-permission"},
+            description =
+                    "Add a <uses-permission> to the manifest (repeatable). A bare name is prefixed with android.permission.")
     private List<String> addedPermissions = new ArrayList<>();
 
-    @Parameter(names = {"--documents-provider"}, description = "Inject a DocumentsProvider exposing the app's private data to the system file picker")
+    @Parameter(
+            names = {"--documents-provider"},
+            description = "Inject a DocumentsProvider exposing the app's private data to the system file picker")
     private boolean injectDocumentsProvider = false;
 
-    @Parameter(names = {"--gms-replacement"}, description = "Redirect Google Play services calls and pushes to this replacement package (e.g. vendor.android.gms) and declare the original signature to it")
+    @Parameter(
+            names = {"--gms-replacement"},
+            description =
+                    "Redirect Google Play services calls and pushes to this replacement package (e.g. vendor.android.gms) and declare the original signature to it")
     private String gmsReplacementPackage = null;
 
-    @Parameter(names = {"--fake-signature"}, description = "Declare the original signature as fake-signature, for a ROM with signature spoofing")
+    @Parameter(
+            names = {"--fake-signature"},
+            description = "Declare the original signature as fake-signature, for a ROM with signature spoofing")
     private boolean declareFakeSignature = false;
 
-    @Parameter(names = {"--storage-redirect", "--sr"}, description = "Enable storage redirection to custom container")
+    @Parameter(
+            names = {"--storage-redirect", "--sr"},
+            description = "Enable storage redirection to custom container")
     private boolean storageRedirectEnabled = false;
 
-    @Parameter(names = {"--container-path"}, description = "Custom container directory template (default: Containers/{pkg})")
+    @Parameter(
+            names = {"--storage-spoof", "--sr-spoof"},
+            description = "Enable transparent path spoofing mode instead of direct rewriting",
+            arity = 1)
+    private Boolean storageSpoofing = null;
+
+    @Parameter(
+            names = {"--custom-rule"},
+            description = "Add a custom path mapping rule: <virtual>=<real> (repeatable)")
+    private List<String> customRules = new ArrayList<>();
+
+    @Parameter(
+            names = {"--container-path"},
+            description = "Custom container directory template (default: Containers/{pkg})")
     private String containerPath = "Containers/{pkg}";
 
-    @Parameter(names = {"--sr-internal"}, description = "Redirect internal data (/data/user/0/<pkg>) to container", arity = 1)
+    @Parameter(
+            names = {"--sr-internal"},
+            description = "Redirect internal data (/data/user/0/<pkg>) to container",
+            arity = 1)
     private boolean redirectInternal = true;
 
-    @Parameter(names = {"--sr-external"}, description = "Redirect external storage (/sdcard) to container", arity = 1)
+    @Parameter(
+            names = {"--sr-external"},
+            description = "Redirect external storage (/sdcard) to container",
+            arity = 1)
     private boolean redirectExternal = true;
 
-    @Parameter(names = {"--sr-databases"}, description = "Redirect SQLite database paths", arity = 1)
+    @Parameter(
+            names = {"--sr-databases"},
+            description = "Redirect SQLite database paths",
+            arity = 1)
     private boolean redirectDatabases = true;
 
-    @Parameter(names = {"--sr-preferences"}, description = "Redirect SharedPreferences", arity = 1)
+    @Parameter(
+            names = {"--sr-preferences"},
+            description = "Redirect SharedPreferences",
+            arity = 1)
     private boolean redirectPreferences = true;
 
-    @Parameter(names = {"--sr-constructors"}, description = "Redirect File and stream constructor calls", arity = 1)
+    @Parameter(
+            names = {"--sr-constructors"},
+            description = "Redirect File and stream constructor calls",
+            arity = 1)
     private boolean redirectConstructors = true;
 
-    @Parameter(names = {"--sr-logging"}, description = "Enable redirection activity logging to <container>/redirect.log")
+    @Parameter(
+            names = {"--sr-logging"},
+            description = "Enable redirection activity logging to <container>/redirect.log")
     private boolean redirectLogging = false;
 
-    @Parameter(names = {"--microg"}, description = "Enable MicroG universal integration patch (rewrite GMS references to MicroG at build-time)")
+    @Parameter(
+            names = {"--microg"},
+            description = "Enable MicroG universal integration patch (rewrite GMS references to MicroG at build-time)")
     private boolean useMicroG = false;
 
-    @Parameter(names = {"--microg-vendor"}, description = "Vendor prefix for MicroG integration (default: app.revanced)")
+    @Parameter(
+            names = {"--microg-vendor"},
+            description = "Vendor prefix for MicroG integration (default: app.revanced)")
     private String microGVendor = "app.revanced";
+
+    @Parameter(
+            names = {"--keep-abi", "--strip-other-abis"},
+            description = "Comma-separated list of ABIs to keep in the APK, stripping all others (e.g. arm64-v8a)")
+    private List<String> keepAbis = new ArrayList<>();
+
+    @Parameter(
+            names = {"--ssl-unpin", "--unpin-ssl"},
+            description = "Enable 1-click SSL/TLS certificate unpinning and trust user certificates")
+    private boolean sslUnpinning = false;
+
+    @Parameter(
+            names = {"--crash-debugger", "--catch-crashes"},
+            description = "Enable notification-based crash debugger to capture error logs on crash")
+    private boolean crashDebugger = false;
 
     private final JCommander jCommander;
 
@@ -160,10 +258,7 @@ public class LSPatch {
         KeystoreSpec keystore = keystoreArgs.get(0) == null
                 ? KeystoreSpec.builtIn()
                 : KeystoreSpec.of(
-                        new File(keystoreArgs.get(0)),
-                        keystoreArgs.get(1),
-                        keystoreArgs.get(2),
-                        keystoreArgs.get(3));
+                        new File(keystoreArgs.get(0)), keystoreArgs.get(1), keystoreArgs.get(2), keystoreArgs.get(3));
         ManifestOverrides overrides = ManifestOverrides.builder()
                 .versionCode(versionCodeOverride)
                 .label(labelOverride)
@@ -178,6 +273,8 @@ public class LSPatch {
                 .declareFakeSignature(declareFakeSignature)
                 .storageRedirectEnabled(storageRedirectEnabled)
                 .containerPath(containerPath)
+                .storageSpoofing((storageSpoofing != null) ? storageSpoofing : storageRedirectEnabled)
+                .customRules(customRules)
                 .redirectInternal(redirectInternal)
                 .redirectExternal(redirectExternal)
                 .redirectDatabases(redirectDatabases)
@@ -186,6 +283,9 @@ public class LSPatch {
                 .redirectLogging(redirectLogging)
                 .useMicroG(useMicroG)
                 .microGVendor(microGVendor)
+                .keepAbis(keepAbis)
+                .sslUnpinning(sslUnpinning)
+                .crashDebugger(crashDebugger)
                 .build();
         return PatchSpec.builder()
                 .apks(apkPaths.stream().map(File::new).collect(Collectors.toList()))

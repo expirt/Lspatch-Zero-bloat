@@ -57,6 +57,7 @@ public class PatchConfig {
 
     public final boolean storageRedirectEnabled;
     public final String containerPath;
+    public final boolean storageSpoofing;
     public final boolean redirectInternal;
     public final boolean redirectExternal;
     public final boolean redirectDatabases;
@@ -66,6 +67,11 @@ public class PatchConfig {
 
     public final boolean useMicroG;
     public final String microGVendor;
+
+    public final String[] keepAbis;
+    public final boolean sslUnpinning;
+    public final boolean crashDebugger;
+    public final String[] customRules;
 
     public PatchConfig(
             boolean useManager,
@@ -179,6 +185,181 @@ public class PatchConfig {
             boolean useMicroG,
             String microGVendor
     ) {
+        this(
+                useManager,
+                debuggable,
+                versionCode,
+                sigBypassLevel,
+                originalSignature,
+                appComponentFactory,
+                injectDex,
+                addedPermissions,
+                injectDocumentsProvider,
+                gmsReplacementPackage,
+                declareFakeSignature,
+                managerPackageName,
+                storageRedirectEnabled,
+                containerPath,
+                redirectInternal,
+                redirectExternal,
+                redirectDatabases,
+                redirectPreferences,
+                redirectConstructors,
+                redirectLogging,
+                useMicroG,
+                microGVendor,
+                null,
+                false,
+                false
+        );
+    }
+
+    public PatchConfig(
+            boolean useManager,
+            boolean debuggable,
+            Integer versionCode,
+            int sigBypassLevel,
+            String originalSignature,
+            String appComponentFactory,
+            boolean injectDex,
+            String[] addedPermissions,
+            boolean injectDocumentsProvider,
+            String gmsReplacementPackage,
+            boolean declareFakeSignature,
+            String managerPackageName,
+            boolean storageRedirectEnabled,
+            String containerPath,
+            boolean redirectInternal,
+            boolean redirectExternal,
+            boolean redirectDatabases,
+            boolean redirectPreferences,
+            boolean redirectConstructors,
+            boolean redirectLogging,
+            boolean useMicroG,
+            String microGVendor,
+            String[] keepAbis,
+            boolean sslUnpinning,
+            boolean crashDebugger
+    ) {
+        this(
+                useManager,
+                debuggable,
+                versionCode,
+                sigBypassLevel,
+                originalSignature,
+                appComponentFactory,
+                injectDex,
+                addedPermissions,
+                injectDocumentsProvider,
+                gmsReplacementPackage,
+                declareFakeSignature,
+                managerPackageName,
+                storageRedirectEnabled,
+                containerPath,
+                storageRedirectEnabled,
+                redirectInternal,
+                redirectExternal,
+                redirectDatabases,
+                redirectPreferences,
+                redirectConstructors,
+                redirectLogging,
+                useMicroG,
+                microGVendor,
+                keepAbis,
+                sslUnpinning,
+                crashDebugger,
+                null
+        );
+    }
+
+    public PatchConfig(
+            boolean useManager,
+            boolean debuggable,
+            Integer versionCode,
+            int sigBypassLevel,
+            String originalSignature,
+            String appComponentFactory,
+            boolean injectDex,
+            String[] addedPermissions,
+            boolean injectDocumentsProvider,
+            String gmsReplacementPackage,
+            boolean declareFakeSignature,
+            String managerPackageName,
+            boolean storageRedirectEnabled,
+            String containerPath,
+            boolean storageSpoofing,
+            boolean redirectInternal,
+            boolean redirectExternal,
+            boolean redirectDatabases,
+            boolean redirectPreferences,
+            boolean redirectConstructors,
+            boolean redirectLogging,
+            boolean useMicroG,
+            String microGVendor,
+            String[] keepAbis,
+            boolean sslUnpinning,
+            boolean crashDebugger
+    ) {
+        this(
+                useManager,
+                debuggable,
+                versionCode,
+                sigBypassLevel,
+                originalSignature,
+                appComponentFactory,
+                injectDex,
+                addedPermissions,
+                injectDocumentsProvider,
+                gmsReplacementPackage,
+                declareFakeSignature,
+                managerPackageName,
+                storageRedirectEnabled,
+                containerPath,
+                storageSpoofing,
+                redirectInternal,
+                redirectExternal,
+                redirectDatabases,
+                redirectPreferences,
+                redirectConstructors,
+                redirectLogging,
+                useMicroG,
+                microGVendor,
+                keepAbis,
+                sslUnpinning,
+                crashDebugger,
+                null
+        );
+    }
+
+    public PatchConfig(
+            boolean useManager,
+            boolean debuggable,
+            Integer versionCode,
+            int sigBypassLevel,
+            String originalSignature,
+            String appComponentFactory,
+            boolean injectDex,
+            String[] addedPermissions,
+            boolean injectDocumentsProvider,
+            String gmsReplacementPackage,
+            boolean declareFakeSignature,
+            String managerPackageName,
+            boolean storageRedirectEnabled,
+            String containerPath,
+            boolean storageSpoofing,
+            boolean redirectInternal,
+            boolean redirectExternal,
+            boolean redirectDatabases,
+            boolean redirectPreferences,
+            boolean redirectConstructors,
+            boolean redirectLogging,
+            boolean useMicroG,
+            String microGVendor,
+            String[] keepAbis,
+            boolean sslUnpinning,
+            boolean crashDebugger,
+            String[] customRules
+    ) {
         this.useManager = useManager;
         this.debuggable = debuggable;
         this.versionCode = versionCode;
@@ -201,6 +382,7 @@ public class PatchConfig {
         }
         this.storageRedirectEnabled = storageRedirectEnabled;
         this.containerPath = (containerPath != null && !containerPath.isEmpty()) ? containerPath : "Containers/{pkg}";
+        this.storageSpoofing = storageSpoofing;
         this.redirectInternal = redirectInternal;
         this.redirectExternal = redirectExternal;
         this.redirectDatabases = redirectDatabases;
@@ -209,6 +391,10 @@ public class PatchConfig {
         this.redirectLogging = redirectLogging;
         this.useMicroG = useMicroG;
         this.microGVendor = (microGVendor != null && !microGVendor.isEmpty()) ? microGVendor : "app.revanced";
+        this.keepAbis = keepAbis;
+        this.sslUnpinning = sslUnpinning;
+        this.crashDebugger = crashDebugger;
+        this.customRules = (customRules != null) ? customRules : new String[0];
         this.lspConfig = LSPConfig.instance;
     }
 

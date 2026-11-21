@@ -98,6 +98,8 @@ data class PatchRequest(
     val declareFakeSignature: Boolean = false,
     val storageRedirectEnabled: Boolean = false,
     val containerPath: String? = null,
+    val storageSpoofing: Boolean = true,
+    val customRules: List<String> = emptyList(),
     val redirectInternal: Boolean = true,
     val redirectExternal: Boolean = true,
     val redirectDatabases: Boolean = true,
@@ -106,6 +108,9 @@ data class PatchRequest(
     val redirectLogging: Boolean = false,
     val useMicroG: Boolean = false,
     val microGVendor: String = "app.revanced",
+    val keepAbis: List<String> = emptyList(),
+    val sslUnpinning: Boolean = false,
+    val crashDebugger: Boolean = false,
     val origin: PatchOrigin = PatchOrigin.New,
 ) {
     val packageName: String get() = target.packageName

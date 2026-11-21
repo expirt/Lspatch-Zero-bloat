@@ -1,8 +1,10 @@
 package org.lsposed.lspatch.ui.page
 
 import org.matrix.vector.ui.AppIcon
+import org.matrix.vector.ui.copyToClipboard
 import org.matrix.vector.ui.show
 import org.matrix.vector.ui.SnackbarTone
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,10 +28,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -58,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,6 +137,10 @@ fun AppDetailScreen(navigator: Navigator, packageName: String) {
     var showRestore by remember { mutableStateOf(false) }
     var showLeave by remember { mutableStateOf(false) }
     var leaveAsked by remember { mutableStateOf(false) }
+    var microGLogging by rememberSaveable(packageName) {
+        mutableStateOf(File("/storage/emulated/0/.lspatch_logs", "$packageName.auth_log").exists())
+    }
+    var showSignInLogDialog by rememberSaveable { mutableStateOf(false) }
 
     val applied = stringResource(R.string.appdetail_scope_applied)
     val applyFailed = stringResource(R.string.appdetail_scope_failed)
@@ -423,6 +435,40 @@ fun AppDetailScreen(navigator: Navigator, packageName: String) {
                             listOf(File(app.app.sourceDir)) + (app.app.splitSourceDirs?.map { File(it) } ?: emptyList())
                         exporter.export(app.label, apks)
                     }
+                    if (config?.useMicroG == true) {
+                        ActionDrawerItem(
+                            icon = Icons.Rounded.CloudSync,
+                            title = stringResource(R.string.manage_microg_monitor_title),
+                            subtitle = stringResource(
+                                if (microGLogging) R.string.manage_microg_monitor_active
+                                else R.string.manage_microg_monitor_inactive
+                            ),
+                        ) {
+                            val newState = !microGLogging
+                            microGLogging = newState
+                            runCatching {
+                                val dir = File("/storage/emulated/0/.lspatch_logs")
+                                dir.mkdirs()
+                                val trigger = File(dir, "$packageName.auth_log")
+                                if (newState) trigger.createNewFile() else trigger.delete()
+                                val intent = Intent("org.expirt.lspatch.ACTION_SET_MICROG_LOG").apply {
+                                    putExtra("enabled", newState)
+                                    putExtra("package", packageName)
+                                }
+                                context.sendBroadcast(intent)
+                            }
+                        }
+                        val logFile = File("/storage/emulated/0/.lspatch_logs", "${packageName}_signin.log")
+                        if (logFile.exists() && logFile.length() > 0) {
+                            ActionDrawerItem(
+                                icon = Icons.AutoMirrored.Rounded.Notes,
+                                title = stringResource(R.string.manage_view_signin_log),
+                                subtitle = logFile.absolutePath,
+                            ) {
+                                showSignInLogDialog = true
+                            }
+                        }
+                    }
                     HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
                     ActionDrawerItem(
                         icon = Icons.Rounded.SettingsBackupRestore,
@@ -552,6 +598,39 @@ fun AppDetailScreen(navigator: Navigator, packageName: String) {
             },
             dismissButton = {
                 TextButton(onClick = { showLeave = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showSignInLogDialog) {
+        val logFile = File("/storage/emulated/0/.lspatch_logs", "${packageName}_signin.log")
+        val content = remember { runCatching { logFile.readText() }.getOrDefault("Empty log") }
+        SharedAlertDialog(
+            onDismissRequest = { showSignInLogDialog = false },
+            title = { Text(stringResource(R.string.manage_view_signin_log)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = content,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, content)
+                        showSignInLogDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.patch_copy_log))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignInLogDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             },

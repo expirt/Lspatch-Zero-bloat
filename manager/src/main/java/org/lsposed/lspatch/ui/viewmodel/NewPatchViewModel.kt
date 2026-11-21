@@ -128,6 +128,10 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
 
     fun setContainerPath(value: String?) = mutate { it.copy(containerPath = value) }
 
+    fun setStorageSpoofing(value: Boolean) = mutate { it.copy(storageSpoofing = value) }
+
+    fun setCustomRules(rules: List<String>) = mutate { it.copy(customRules = rules) }
+
     fun setRedirectInternal(value: Boolean) = mutate { it.copy(redirectInternal = value) }
 
     fun setRedirectExternal(value: Boolean) = mutate { it.copy(redirectExternal = value) }
@@ -139,6 +143,12 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
     fun setRedirectConstructors(value: Boolean) = mutate { it.copy(redirectConstructors = value) }
 
     fun setRedirectLogging(value: Boolean) = mutate { it.copy(redirectLogging = value) }
+
+    fun setKeepAbis(abis: List<String>) = mutate { it.copy(keepAbis = abis) }
+
+    fun setSslUnpinning(value: Boolean) = mutate { it.copy(sslUnpinning = value) }
+
+    fun setCrashDebugger(value: Boolean) = mutate { it.copy(crashDebugger = value) }
 
     /**
      * Adds modules to the set, keeping what is already there.

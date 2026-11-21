@@ -13,30 +13,11 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.system.Os;
 import android.util.Log;
-
 import dalvik.system.PathClassLoader;
-
-import org.lsposed.lspatch.loader.util.FileUtils;
-import org.lsposed.lspatch.loader.util.XLog;
-import org.lsposed.lspatch.service.EmbeddedRemoteServices;
-import org.lsposed.lspatch.service.LocalApplicationService;
-import org.lsposed.lspatch.service.RemoteApplicationService;
-import org.lsposed.lspatch.share.Constants;
-import org.lsposed.lspatch.share.LSPConfig;
-import org.lsposed.lspatch.share.remote.FrameworkInfo;
-import org.lsposed.lspatch.share.remote.LSPatchXposedService;
-import org.matrix.vector.Startup;
-import org.matrix.vector.ipc.IFrameworkService;
-import org.matrix.vector.impl.core.VectorModuleManager;
-import org.matrix.vector.impl.di.LegacyFrameworkDelegate;
-import org.matrix.vector.impl.di.VectorBootstrap;
-import org.json.JSONObject;
-
 import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.XposedInit;
-
 import io.github.libxposed.service.IXposedService;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -56,9 +37,21 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.zip.ZipFile;
-
-import de.robv.android.xposed.XposedHelpers;
-import hidden.HiddenApiBridge;
+import org.json.JSONObject;
+import org.lsposed.lspatch.loader.util.FileUtils;
+import org.lsposed.lspatch.loader.util.XLog;
+import org.lsposed.lspatch.service.EmbeddedRemoteServices;
+import org.lsposed.lspatch.service.LocalApplicationService;
+import org.lsposed.lspatch.service.RemoteApplicationService;
+import org.lsposed.lspatch.share.Constants;
+import org.lsposed.lspatch.share.LSPConfig;
+import org.lsposed.lspatch.share.remote.FrameworkInfo;
+import org.lsposed.lspatch.share.remote.LSPatchXposedService;
+import org.matrix.vector.Startup;
+import org.matrix.vector.impl.core.VectorModuleManager;
+import org.matrix.vector.impl.di.LegacyFrameworkDelegate;
+import org.matrix.vector.impl.di.VectorBootstrap;
+import org.matrix.vector.ipc.IFrameworkService;
 
 /**
  * Created by Windysha
@@ -90,6 +83,10 @@ public class LSPApplication {
         if (context == null) {
             XLog.e(TAG, "Error when creating context");
             return;
+        }
+
+        if (config.optBoolean("crashDebugger")) {
+            CrashDebugger.install(context);
         }
 
         Log.d(TAG, "Initialize service client");
@@ -150,6 +147,11 @@ public class LSPApplication {
 
         if (config.optBoolean("useMicroG")) {
             MicroGSupport.init(config.optString("microGVendor", "app.revanced"));
+            MicroGLogger.install(context, appLoadedApk.getClassLoader());
+        }
+
+        if (config.optBoolean("sslUnpinning")) {
+            SSLUnpinning.install(context, appLoadedApk.getClassLoader());
         }
 
         // Only after the app class loader exists, and before installContentProviders runs on return
@@ -237,9 +239,11 @@ public class LSPApplication {
         // Pass asBinder() (not the typed Stub) so the module's asInterface builds a marshalling proxy
         // across the class-loader boundary.
         if (!config.optBoolean("useManager")) {
-            FrameworkInfo frameworkInfo = new FrameworkInfo("LSPatch",
+            FrameworkInfo frameworkInfo = new FrameworkInfo(
+                    "LSPatch",
                     LSPConfig.instance.VERSION_NAME + " (" + LSPConfig.instance.VERSION_CODE + ")",
-                    LSPConfig.instance.VERSION_CODE, IXposedService.PROP_CAP_REMOTE);
+                    LSPConfig.instance.VERSION_CODE,
+                    IXposedService.PROP_CAP_REMOTE);
             for (String modulePkg : VectorModuleManager.INSTANCE.loadedModulePackages()) {
                 try {
                     ClassLoader moduleCl = VectorModuleManager.INSTANCE.getModuleClassLoader(modulePkg);
@@ -349,7 +353,8 @@ public class LSPApplication {
             // a factory it does not actually ship, which is dropped the same way.
             Path apkToCheck = cacheApkPath != null ? cacheApkPath : Paths.get(appInfo.sourceDir);
             var originalFactory = config.has("appComponentFactory") ? config.optString("appComponentFactory") : null;
-            if (originalFactory != null && (originalFactory.isEmpty() || originalFactory.contains("LSPAppComponentFactoryStub"))) {
+            if (originalFactory != null
+                    && (originalFactory.isEmpty() || originalFactory.contains("LSPAppComponentFactoryStub"))) {
                 originalFactory = null;
             }
             if (originalFactory != null && !originalApkHasClass(apkToCheck, originalFactory)) {
@@ -357,7 +362,6 @@ public class LSPApplication {
                 originalFactory = null;
             }
             appInfo.appComponentFactory = originalFactory;
-
 
             var mPackages = (Map<?, ?>) XposedHelpers.getObjectField(activityThread, "mPackages");
             mPackages.remove(appInfo.packageName);
@@ -369,7 +373,8 @@ public class LSPApplication {
             // arms them and then calls realizeLoadedApk().
             Log.i(TAG, "hooked app initialized: " + appLoadedApk);
 
-            return (Context) XposedHelpers.callStaticMethod(Class.forName("android.app.ContextImpl"), "createAppContext", activityThread, stubLoadedApk);
+            return (Context) XposedHelpers.callStaticMethod(
+                    Class.forName("android.app.ContextImpl"), "createAppContext", activityThread, stubLoadedApk);
         } catch (Throwable e) {
             Log.e(TAG, "createLoadedApk", e);
             return null;
@@ -391,14 +396,11 @@ public class LSPApplication {
         try {
             new PathClassLoader(apkPath.toString(), ClassLoader.getSystemClassLoader()).loadClass(className);
             return true;
-        } catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
             return false;
         } catch (Throwable t) {
-            // The probe could not answer -- a linkage failure inside the throwaway loader, say. Keep the
-            // declaration and leave the decision to the framework, which falls back to the default
-            // factory on its own when the class turns out to be unusable.
             Log.w(TAG, "AppComponentFactory probe failed: " + className, t);
-            return true;
+            return false;
         }
     }
 
@@ -413,7 +415,8 @@ public class LSPApplication {
     private static void realizeLoadedApk() {
         appLoadedApk.getClassLoader();
 
-        var activityClientRecordClass = XposedHelpers.findClass("android.app.ActivityThread$ActivityClientRecord", ActivityThread.class.getClassLoader());
+        var activityClientRecordClass = XposedHelpers.findClass(
+                "android.app.ActivityThread$ActivityClientRecord", ActivityThread.class.getClassLoader());
         var fixActivityClientRecord = (BiConsumer<Object, Object>) (k, v) -> {
             if (activityClientRecordClass.isInstance(v)) {
                 var pkgInfo = XposedHelpers.getObjectField(v, "packageInfo");
@@ -427,7 +430,8 @@ public class LSPApplication {
         mActivities.forEach(fixActivityClientRecord);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                var mLaunchingActivities = (Map<?, ?>) XposedHelpers.getObjectField(activityThread, "mLaunchingActivities");
+                var mLaunchingActivities =
+                        (Map<?, ?>) XposedHelpers.getObjectField(activityThread, "mLaunchingActivities");
                 mLaunchingActivities.forEach(fixActivityClientRecord);
             }
         } catch (Throwable ignored) {
@@ -460,7 +464,8 @@ public class LSPApplication {
 
         for (int i = codePaths.size() - 1; i >= 0; i--) {
             String splitName = i == 0 ? null : appInfo.splitNames[i - 1];
-            File curProfileFile = new File(profileDir, splitName == null ? "primary.prof" : splitName + ".split.prof").getAbsoluteFile();
+            File curProfileFile = new File(profileDir, splitName == null ? "primary.prof" : splitName + ".split.prof")
+                    .getAbsoluteFile();
             Log.d(TAG, "Processing " + curProfileFile.getAbsolutePath());
             try {
                 if (!curProfileFile.exists()) {

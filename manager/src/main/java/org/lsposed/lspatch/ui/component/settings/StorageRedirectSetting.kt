@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -53,6 +54,8 @@ import org.matrix.vector.ui.sheetRowColors
 fun StorageRedirectSetting(
     enabled: Boolean,
     containerPath: String?,
+    storageSpoofing: Boolean = true,
+    customRules: List<String> = emptyList(),
     redirectInternal: Boolean,
     redirectExternal: Boolean,
     redirectDatabases: Boolean,
@@ -62,6 +65,8 @@ fun StorageRedirectSetting(
     needsPermission: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
     onContainerPathChange: (String?) -> Unit,
+    onToggleSpoofing: (Boolean) -> Unit = {},
+    onCustomRulesChange: (List<String>) -> Unit = {},
     onToggleInternal: (Boolean) -> Unit,
     onToggleExternal: (Boolean) -> Unit,
     onToggleDatabases: (Boolean) -> Unit,
@@ -97,6 +102,8 @@ fun StorageRedirectSetting(
         StorageRedirectSheet(
             enabled = enabled,
             containerPath = containerPath,
+            storageSpoofing = storageSpoofing,
+            customRules = customRules,
             redirectInternal = redirectInternal,
             redirectExternal = redirectExternal,
             redirectDatabases = redirectDatabases,
@@ -106,6 +113,8 @@ fun StorageRedirectSetting(
             needsPermission = needsPermission,
             onToggleEnabled = onToggleEnabled,
             onContainerPathChange = onContainerPathChange,
+            onToggleSpoofing = onToggleSpoofing,
+            onCustomRulesChange = onCustomRulesChange,
             onToggleInternal = onToggleInternal,
             onToggleExternal = onToggleExternal,
             onToggleDatabases = onToggleDatabases,
@@ -123,6 +132,8 @@ fun StorageRedirectSetting(
 private fun StorageRedirectSheet(
     enabled: Boolean,
     containerPath: String?,
+    storageSpoofing: Boolean,
+    customRules: List<String>,
     redirectInternal: Boolean,
     redirectExternal: Boolean,
     redirectDatabases: Boolean,
@@ -132,6 +143,8 @@ private fun StorageRedirectSheet(
     needsPermission: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
     onContainerPathChange: (String?) -> Unit,
+    onToggleSpoofing: (Boolean) -> Unit,
+    onCustomRulesChange: (List<String>) -> Unit,
     onToggleInternal: (Boolean) -> Unit,
     onToggleExternal: (Boolean) -> Unit,
     onToggleDatabases: (Boolean) -> Unit,
@@ -271,6 +284,44 @@ private fun StorageRedirectSheet(
                             checked = redirectLogging,
                             onCheckedChange = onToggleLogging,
                             subtitle = stringResource(R.string.patch_storage_cat_logging_desc),
+                        )
+
+                        ToggleRow(
+                            title = stringResource(R.string.patch_storage_cat_spoofing),
+                            icon = Icons.Rounded.Visibility,
+                            checked = storageSpoofing,
+                            onCheckedChange = onToggleSpoofing,
+                            subtitle = stringResource(R.string.patch_storage_cat_spoofing_desc),
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.patch_storage_custom_rules),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.patch_storage_custom_rules_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                        var rulesText by rememberSaveable { mutableStateOf(customRules.joinToString("\n")) }
+                        OutlinedTextField(
+                            value = rulesText,
+                            onValueChange = {
+                                rulesText = it
+                                val lines = it.lines().map { line -> line.trim() }.filter { line -> line.isNotEmpty() }
+                                onCustomRulesChange(lines)
+                            },
+                            label = { Text(stringResource(R.string.patch_storage_custom_rules)) },
+                            placeholder = { Text(stringResource(R.string.patch_storage_custom_rules_hint)) },
+                            leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                            minLines = 2,
+                            maxLines = 5,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }

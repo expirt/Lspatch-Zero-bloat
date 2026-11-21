@@ -51,6 +51,8 @@ object Patcher {
                     .declareFakeSignature(declareFakeSignature)
                     .storageRedirectEnabled(storageRedirectEnabled)
                     .containerPath(containerPath)
+                    .storageSpoofing(storageSpoofing)
+                    .customRules(customRules)
                     .redirectInternal(redirectInternal)
                     .redirectExternal(redirectExternal)
                     .redirectDatabases(redirectDatabases)
@@ -59,6 +61,9 @@ object Patcher {
                     .redirectLogging(redirectLogging)
                     .useMicroG(useMicroG)
                     .microGVendor(microGVendor)
+                    .keepAbis(keepAbis)
+                    .sslUnpinning(sslUnpinning)
+                    .crashDebugger(crashDebugger)
                     .build()
             )
             .keystore(

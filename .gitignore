@@ -22,3 +22,6 @@ libxposed
 bin/
 .kotlin/
 AGENT_*.md
+*.apk
+__cmake_systeminformation/
+test_local_out/
