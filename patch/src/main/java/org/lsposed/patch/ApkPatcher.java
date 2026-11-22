@@ -17,17 +17,20 @@ import com.wind.meditor.core.ManifestEditor;
 import com.wind.meditor.property.AttributeItem;
 import com.wind.meditor.property.ModificationProperty;
 import com.wind.meditor.utils.NodeValue;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -205,7 +208,8 @@ public final class ApkPatcher {
                     spec.manifestOverrides().crashDebugger,
                     spec.manifestOverrides().customRules.isEmpty()
                             ? null
-                            : spec.manifestOverrides().customRules.toArray(new String[0]));
+                            : spec.manifestOverrides().customRules.toArray(new String[0]),
+                    spec.manifestOverrides().newPackageName);
             byte[] configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
 
             rewriteManifest(
@@ -551,8 +555,13 @@ public final class ApkPatcher {
         long size = entry.getCentralDirectoryHeader().getUncompressedSize();
         if (size > 65536 || size <= 0) return false;
         try (InputStream is = entry.open()) {
-            byte[] bytes = is.readAllBytes();
-            String content = new String(bytes, StandardCharsets.ISO_8859_1);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream((int) size);
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = is.read(buf)) != -1) {
+                baos.write(buf, 0, r);
+            }
+            String content = new String(baos.toByteArray(), StandardCharsets.ISO_8859_1);
             return content.contains("Lorg/lsposed/lspatch/metaloader/LSPAppComponentFactoryStub;");
         } catch (Throwable t) {
             return false;
@@ -620,6 +629,26 @@ public final class ApkPatcher {
             throws IOException {
         ManifestOverrides o = spec.manifestOverrides();
         if (o.isEmpty()) return;
+        if (o.newPackageName != null && !o.newPackageName.isEmpty()) {
+            logger.i("Override packageName (cloning): " + packageName + " -> " + o.newPackageName);
+            property.addManifestAttribute(new AttributeItem(NodeValue.Manifest.PACKAGE, o.newPackageName).setNamespace(null));
+            final String oldPkg = packageName;
+            final String newPkg = o.newPackageName;
+            property.setAuthorityMapper(oldAuth -> {
+                if (oldAuth == null) return null;
+                if (oldAuth.contains(oldPkg)) {
+                    return oldAuth.replace(oldPkg, newPkg);
+                }
+                return newPkg + "." + oldAuth;
+            });
+            property.setPermissionMapper((type, permission) -> {
+                if (permission == null) return null;
+                if (permission.contains(oldPkg)) {
+                    return permission.replace(oldPkg, newPkg);
+                }
+                return permission;
+            });
+        }
         if (o.versionCode != null) {
             logger.i("Override versionCode: " + o.versionCode);
             property.addManifestAttribute(new AttributeItem(NodeValue.Manifest.VERSION_CODE, o.versionCode));

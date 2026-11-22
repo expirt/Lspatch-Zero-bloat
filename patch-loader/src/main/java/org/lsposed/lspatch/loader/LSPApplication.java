@@ -12,8 +12,10 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.system.Os;
+import android.app.AppComponentFactory;
 import android.util.Log;
 import dalvik.system.PathClassLoader;
+import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.XposedInit;
@@ -23,6 +25,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -185,22 +188,112 @@ public class LSPApplication {
      */
     private static void bridgeDocumentsProviderClass() {
         try {
-            ClassLoader appClassLoader = appLoadedApk.getClassLoader();
             final ClassLoader loaderClassLoader = LSPApplication.class.getClassLoader();
-            ClassLoader realParent = appClassLoader.getParent();
-            ClassLoader bridge = new ClassLoader(realParent) {
-                @Override
-                protected Class<?> findClass(String name) throws ClassNotFoundException {
-                    if (DOCUMENTS_PROVIDER_CLASS.equals(name)) {
-                        return loaderClassLoader.loadClass(name);
+
+            // 1. Hook AppComponentFactory.instantiateProvider to return the provider directly
+            try {
+                XC_MethodHook providerHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (DOCUMENTS_PROVIDER_CLASS.equals(param.args[1])) {
+                            try {
+                                Class<?> providerClass = loaderClassLoader.loadClass(DOCUMENTS_PROVIDER_CLASS);
+                                Object instance = providerClass.getConstructor().newInstance();
+                                param.setResult(instance);
+                                Log.i(TAG, "Documents provider: instantiated via AppComponentFactory hook");
+                            } catch (Throwable t) {
+                                Log.e(TAG, "Failed to instantiate documents provider directly in hook", t);
+                            }
+                        }
                     }
-                    throw new ClassNotFoundException(name);
+                };
+                Method baseInstantiate = AppComponentFactory.class.getMethod("instantiateProvider", ClassLoader.class, String.class);
+                XposedBridge.hookMethod(baseInstantiate, providerHook);
+
+                if (appLoadedApk != null) {
+                    Class<?> factoryClass = null;
+                    try {
+                        Object factory = XposedHelpers.getObjectField(appLoadedApk, "mAppComponentFactory");
+                        if (factory != null) {
+                            factoryClass = factory.getClass();
+                        }
+                    } catch (Throwable ignored) {}
+
+                    if (factoryClass == null) {
+                        try {
+                            ApplicationInfo ai = (ApplicationInfo) XposedHelpers.getObjectField(appLoadedApk, "mApplicationInfo");
+                            if (ai != null && ai.appComponentFactory != null) {
+                                factoryClass = appLoadedApk.getClassLoader().loadClass(ai.appComponentFactory);
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+
+                    if (factoryClass != null && factoryClass != AppComponentFactory.class) {
+                        try {
+                            Method m = factoryClass.getMethod("instantiateProvider", ClassLoader.class, String.class);
+                            if (m.getDeclaringClass() != AppComponentFactory.class) {
+                                XposedBridge.hookMethod(m, providerHook);
+                                Log.i(TAG, "Hooked custom AppComponentFactory for DocumentsProvider: " + factoryClass.getName());
+                            }
+                        } catch (Throwable ignored) {}
+                    }
                 }
-            };
-            XposedHelpers.setObjectField(appClassLoader, "parent", bridge);
-            Log.i(TAG, "Documents provider: bridged into the app class loader");
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to hook AppComponentFactory for DocumentsProvider", t);
+            }
+
+            // 2. Splice filtering bridge ClassLoader into all relevant classloaders
+            ClassLoader appClassLoader = appLoadedApk != null ? appLoadedApk.getClassLoader() : null;
+            bridgeClassLoader(appClassLoader, loaderClassLoader);
+            if (stubLoadedApk != null && stubLoadedApk.getClassLoader() != null) {
+                bridgeClassLoader(stubLoadedApk.getClassLoader(), loaderClassLoader);
+            }
+            ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+            if (contextClassLoader != null && contextClassLoader != appClassLoader) {
+                bridgeClassLoader(contextClassLoader, loaderClassLoader);
+            }
+            Log.i(TAG, "Documents provider: bridged into app class loaders");
         } catch (Throwable t) {
             Log.e(TAG, "Failed to expose the documents provider to the app class loader", t);
+        }
+    }
+
+    private static class DocumentsProviderBridgeClassLoader extends ClassLoader {
+        private final ClassLoader loaderClassLoader;
+
+        DocumentsProviderBridgeClassLoader(ClassLoader parent, ClassLoader loaderClassLoader) {
+            super(parent);
+            this.loaderClassLoader = loaderClassLoader;
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (DOCUMENTS_PROVIDER_CLASS.equals(name)) {
+                return loaderClassLoader.loadClass(name);
+            }
+            return super.loadClass(name, resolve);
+        }
+
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            if (DOCUMENTS_PROVIDER_CLASS.equals(name)) {
+                return loaderClassLoader.loadClass(name);
+            }
+            throw new ClassNotFoundException(name);
+        }
+    }
+
+    private static void bridgeClassLoader(ClassLoader target, ClassLoader loaderClassLoader) {
+        if (target == null) return;
+        try {
+            ClassLoader realParent = target.getParent();
+            if (realParent instanceof DocumentsProviderBridgeClassLoader) {
+                return;
+            }
+            ClassLoader bridge = new DocumentsProviderBridgeClassLoader(realParent, loaderClassLoader);
+            XposedHelpers.setObjectField(target, "parent", bridge);
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to bridge ClassLoader: " + target, t);
         }
     }
 
@@ -363,9 +456,11 @@ public class LSPApplication {
             }
             appInfo.appComponentFactory = originalFactory;
 
-            var mPackages = (Map<?, ?>) XposedHelpers.getObjectField(activityThread, "mPackages");
+            @SuppressWarnings("unchecked")
+            var mPackages = (Map<String, WeakReference<LoadedApk>>) XposedHelpers.getObjectField(activityThread, "mPackages");
             mPackages.remove(appInfo.packageName);
             appLoadedApk = activityThread.getPackageInfoNoCheck(appInfo, compatInfo);
+            mPackages.put(appInfo.packageName, new WeakReference<>(appLoadedApk));
             XposedHelpers.setObjectField(mBoundApplication, "info", appLoadedApk);
             // The class loader is deliberately NOT built here. Building it runs the app's
             // AppComponentFactory <clinit>, which a packed app can turn into a native anti-tamper gate;

@@ -43,6 +43,7 @@ import com.android.tools.smali.dexlib2.writer.pool.DexPool;
 
 import org.lsposed.patch.util.Logger;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -90,8 +91,13 @@ public final class MicroGPatcher {
 
             DexBackedDexFile dexFile;
             try (InputStream is = dexEntry.open()) {
-                byte[] bytes = is.readAllBytes();
-                dexFile = new DexBackedDexFile(Opcodes.getDefault(), bytes);
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                byte[] buf = new byte[32768];
+                int r;
+                while ((r = is.read(buf)) != -1) {
+                    baos.write(buf, 0, r);
+                }
+                dexFile = new DexBackedDexFile(Opcodes.getDefault(), baos.toByteArray());
             }
 
             DexPool dexPool = new DexPool(dexFile.getOpcodes());

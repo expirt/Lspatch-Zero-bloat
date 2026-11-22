@@ -64,6 +64,7 @@ object Patcher {
                     .keepAbis(keepAbis)
                     .sslUnpinning(sslUnpinning)
                     .crashDebugger(crashDebugger)
+                    .newPackageName(newPackageName)
                     .build()
             )
             .keystore(
@@ -97,7 +98,7 @@ object Patcher {
                         if (missing.size > 1) " (and ${missing.size - 1} more)" else ""
                 )
             }
-            val outputDir = PatchOutputStore.prepare(request.packageName)
+            val outputDir = PatchOutputStore.prepare(request.newPackageName ?: request.packageName)
             val produced = ApkPatcher(logger, request.toSpec(outputDir)).patch()
             if (produced.isEmpty()) throw java.io.IOException("The patcher produced no apk")
             produced

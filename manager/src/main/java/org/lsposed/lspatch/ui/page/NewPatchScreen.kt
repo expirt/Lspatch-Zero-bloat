@@ -346,6 +346,7 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
                         },
                         onAddFromStorage = { added -> viewModel.addModules(added) },
                         onLabel = viewModel::setLabelOverride,
+                        onNewPackageName = viewModel::setNewPackageName,
                         onExtractNativeLibs = viewModel::setExtractNativeLibs,
                         onCleartext = viewModel::setUsesCleartextTraffic,
                         onAddPermission = viewModel::addPermission,
@@ -410,6 +411,7 @@ private fun ConfigureBody(
     onAddInstalled: () -> Unit,
     onAddFromStorage: (List<ModuleBinding>) -> Unit,
     onLabel: (String) -> Unit,
+    onNewPackageName: (String) -> Unit,
     onExtractNativeLibs: (Boolean) -> Unit,
     onCleartext: (Boolean) -> Unit,
     onAddPermission: (String) -> Unit,
@@ -434,6 +436,7 @@ private fun ConfigureBody(
     onToggleCrashDebugger: (Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val snackbarHost = LocalSnackbarHost.current
     val notAModule = stringResource(R.string.patch_module_not_a_module)
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -688,6 +691,19 @@ private fun ConfigureBody(
                     label = { Text(stringResource(R.string.patch_manifest_label)) },
                     placeholder = { Text(stringResource(R.string.patch_manifest_label_hint)) },
                     leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                var clonePkg by rememberSaveable { mutableStateOf(request.newPackageName.orEmpty()) }
+                OutlinedTextField(
+                    value = clonePkg,
+                    onValueChange = {
+                        clonePkg = it.trim()
+                        onNewPackageName(it.trim())
+                    },
+                    label = { Text("Clone Package Name (Optional)") },
+                    placeholder = { Text(request.packageName + ".clone") },
+                    leadingIcon = { Icon(Icons.Rounded.ContentCopy, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )

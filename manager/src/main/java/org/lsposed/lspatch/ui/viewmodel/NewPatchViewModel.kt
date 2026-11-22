@@ -88,6 +88,8 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
 
     fun setLabelOverride(label: String) = mutate { it.copy(labelOverride = label.ifBlank { null }) }
 
+    fun setNewPackageName(pkg: String) = mutate { it.copy(newPackageName = pkg.ifBlank { null }) }
+
     fun setExtractNativeLibs(value: Boolean) = mutate { it.copy(extractNativeLibs = value) }
 
     fun setUsesCleartextTraffic(value: Boolean) = mutate { it.copy(usesCleartextTraffic = value) }

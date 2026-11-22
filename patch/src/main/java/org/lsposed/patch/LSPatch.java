@@ -95,9 +95,14 @@ public class LSPatch {
     private List<String> modules = new ArrayList<>();
 
     @Parameter(
-            names = {"--name"},
+            names = {"--name", "--app-name"},
             description = "Override the patched app's launcher label")
     private String labelOverride = null;
+
+    @Parameter(
+            names = {"--pkg", "--package-name", "--clone"},
+            description = "New package name for the patched application (cloning)")
+    private String newPackageName = null;
 
     @Parameter(
             names = {"--target-sdk"},
@@ -286,6 +291,7 @@ public class LSPatch {
                 .keepAbis(keepAbis)
                 .sslUnpinning(sslUnpinning)
                 .crashDebugger(crashDebugger)
+                .newPackageName(newPackageName)
                 .build();
         return PatchSpec.builder()
                 .apks(apkPaths.stream().map(File::new).collect(Collectors.toList()))

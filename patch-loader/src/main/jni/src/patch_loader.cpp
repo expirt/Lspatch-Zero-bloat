@@ -69,6 +69,20 @@ void PatchLoader::LoadDex(JNIEnv* env, Context::PreloadedDex&& dex) {
     auto byte_buffer_class = JNI_FindClass(env, "java/nio/ByteBuffer");
     auto dex_buffer = env->NewDirectByteBuffer(dex.data(), dex.size());
 
+    // Isolate LSPatch framework from the host application's bundled libraries (e.g. Kotlin stdlib).
+    // The host application's PathClassLoader can bundle conflicting, stripped, or older versions of
+    // runtime libraries. If stub_classloader is the parent of InMemoryDexClassLoader, parent-first
+    // delegation resolves host classes first, causing NoSuchMethodError (e.g. checkNotNullParameter).
+    // By parenting to stub_classloader->getParent() (java.lang.BootClassLoader), LSPatch resolves
+    // framework platform classes from BootClassLoader and its own runtime classes from loader.dex,
+    // achieving total ClassLoader isolation.
+    auto class_loader_class = JNI_FindClass(env, "java/lang/ClassLoader");
+    auto mid_get_parent =
+        JNI_GetMethodID(env, class_loader_class, "getParent", "()Ljava/lang/ClassLoader;");
+    auto boot_class_loader = JNI_CallObjectMethod(env, stub_classloader.get(), mid_get_parent);
+    jobject isolated_parent =
+        boot_class_loader.get() ? boot_class_loader.get() : stub_classloader.get();
+
     // Give the framework loader a parent that already defines XResources' synthetic super
     // (xposed.dummy.XResourcesSuperClass, extending android.content.res.Resources). LSPatch loads
     // the framework into an already-running app, so there is no zygote window in which Vector could
@@ -79,9 +93,9 @@ void PatchLoader::LoadDex(JNIEnv* env, Context::PreloadedDex&& dex) {
     // is a custom subclass XResources cannot stand in for it and resource replacement stays inactive.
     ScopedLocalRef<jobject> super_loader{
         env, vector::native::jni::BuildDummySuperClassLoader(
-                 env, stub_classloader.get(), "android.content.res.Resources",
+                 env, isolated_parent, "android.content.res.Resources",
                  "android.content.res.TypedArray")};
-    jobject framework_parent = super_loader.get() ? super_loader.get() : stub_classloader.get();
+    jobject framework_parent = super_loader.get() ? super_loader.get() : isolated_parent;
 
     if (auto my_cl =
             JNI_NewObject(env, in_memory_classloader, mid_init, dex_buffer, framework_parent)) {

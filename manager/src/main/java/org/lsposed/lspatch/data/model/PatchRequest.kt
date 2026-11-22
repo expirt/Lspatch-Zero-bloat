@@ -111,6 +111,7 @@ data class PatchRequest(
     val keepAbis: List<String> = emptyList(),
     val sslUnpinning: Boolean = false,
     val crashDebugger: Boolean = false,
+    val newPackageName: String? = null,
     val origin: PatchOrigin = PatchOrigin.New,
 ) {
     val packageName: String get() = target.packageName

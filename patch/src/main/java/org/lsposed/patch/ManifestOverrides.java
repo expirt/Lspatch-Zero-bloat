@@ -107,6 +107,7 @@ public final class ManifestOverrides {
     public final boolean sslUnpinning;
     public final boolean crashDebugger;
     public final List<String> customRules;
+    public final String newPackageName;
 
     private ManifestOverrides(Builder b) {
         this.versionCode = b.versionCode;
@@ -133,6 +134,7 @@ public final class ManifestOverrides {
         this.sslUnpinning = b.sslUnpinning;
         this.crashDebugger = b.crashDebugger;
         this.customRules = Collections.unmodifiableList(new ArrayList<>(b.customRules));
+        this.newPackageName = b.newPackageName;
     }
 
     /** True when nothing is overridden, so the patcher can skip the work entirely. */
@@ -151,7 +153,8 @@ public final class ManifestOverrides {
                 && keepAbis.isEmpty()
                 && !sslUnpinning
                 && !crashDebugger
-                && customRules.isEmpty();
+                && customRules.isEmpty()
+                && newPackageName == null;
     }
 
     /**
@@ -341,6 +344,13 @@ public final class ManifestOverrides {
 
         public Builder crashDebugger(boolean crashDebugger) {
             this.crashDebugger = crashDebugger;
+            return this;
+        }
+
+        private String newPackageName;
+
+        public Builder newPackageName(String newPackageName) {
+            this.newPackageName = (newPackageName == null || newPackageName.isBlank()) ? null : newPackageName.trim();
             return this;
         }
 
