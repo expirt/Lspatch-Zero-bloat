@@ -13,6 +13,10 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <cerrno>
+#include <cstring>
+#include <linux/memfd.h>
+#include <sys/syscall.h>
+#include <sys/system_properties.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
@@ -81,11 +85,192 @@ std::string ResolveAt(int dirfd, const char* pathname) {
     return ""; // Untracked dirfd: pass untouched directly to underlying libc call
 }
 
-// Function pointer signatures & backups
+// --- Anti-Detection & Identity Native Hooks ---
+static bool g_hide_root_files = false;
+static bool g_mask_proc_maps = false;
+static std::string g_spoof_boot_id_path;
+static std::mutex g_prop_mutex;
+static std::unordered_map<std::string, std::string> g_spoof_props;
+static std::unordered_map<const prop_info*, std::string> g_prop_info_names;
+
+static bool IsSuspiciousPath(const char* pathname) {
+    if (!g_hide_root_files || pathname == nullptr) return false;
+    std::string p(pathname);
+    const char* frags[] = {
+        "/su", "/magisk", "/supersu", "superuser.apk", "/sbin/.magisk",
+        "/data/adb/", "/xposed", "xposedbridge", "lsposed"
+    };
+    for (const char* frag : frags) {
+        size_t flen = strlen(frag);
+        if (p.size() >= flen && p.compare(p.size() - flen, flen, frag) == 0) return true;
+        if (p.find(std::string(frag) + "/") != std::string::npos) return true;
+    }
+    return false;
+}
+
+static bool IsProcMapsPath(const char* pathname) {
+    if (!g_mask_proc_maps || pathname == nullptr) return false;
+    std::string p(pathname);
+    if (p == "/proc/self/maps" || p == "/proc/self/smaps") return true;
+    if (p.rfind("/proc/", 0) == 0) {
+        size_t len = p.size();
+        if ((len > 5 && p.compare(len - 5, 5, "/maps") == 0) ||
+            (len > 6 && p.compare(len - 6, 6, "/smaps") == 0)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool TranslatePathWithAntiDetect(const char* pathname, std::string& out, bool& hide_out) {
+    hide_out = false;
+    if (pathname == nullptr) return false;
+    if (IsSuspiciousPath(pathname)) {
+        hide_out = true;
+        return false;
+    }
+    if (!g_spoof_boot_id_path.empty() && strcmp(pathname, "/proc/sys/kernel/random/boot_id") == 0) {
+        out = g_spoof_boot_id_path;
+        return true;
+    }
+    return PathTranslator::Instance().ToRealPath(pathname, out);
+}
+
+static bool ShouldFilterMapLine(const std::string& line) {
+    const char* frags[] = {"lspatch", "lsposed", "xposed", "lsplant", "vector", "liblspatch"};
+    for (const char* f : frags) {
+        if (line.find(f) != std::string::npos) return true;
+    }
+    return false;
+}
+
 static int (*backup_open)(const char*, int, ...) = nullptr;
 static int (*backup_open_2)(const char*, int) = nullptr;
 static int (*backup_openat)(int, const char*, int, ...) = nullptr;
 static FILE* (*backup_fopen)(const char*, const char*) = nullptr;
+
+static int OpenMaskedProcMapsFd(const char* pathname) {
+    int raw_fd = backup_open ? backup_open(pathname, O_RDONLY, 0) : open(pathname, O_RDONLY);
+    if (raw_fd < 0) return -1;
+
+    std::string raw;
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(raw_fd, buf, sizeof(buf))) > 0) {
+        raw.append(buf, n);
+    }
+    close(raw_fd);
+
+    int mfd = static_cast<int>(syscall(__NR_memfd_create, "maps", MFD_CLOEXEC));
+    if (mfd < 0) {
+        return backup_open ? backup_open(pathname, O_RDONLY, 0) : open(pathname, O_RDONLY);
+    }
+
+    std::string filtered;
+    filtered.reserve(raw.size());
+    size_t start = 0;
+    while (start < raw.size()) {
+        size_t end = raw.find('\n', start);
+        if (end == std::string::npos) end = raw.size();
+        std::string line = raw.substr(start, end - start);
+        if (!ShouldFilterMapLine(line)) {
+            filtered.append(line);
+            if (end < raw.size()) filtered.push_back('\n');
+        }
+        start = end + 1;
+    }
+
+    size_t written = 0;
+    while (written < filtered.size()) {
+        ssize_t w = write(mfd, filtered.data() + written, filtered.size() - written);
+        if (w <= 0) break;
+        written += static_cast<size_t>(w);
+    }
+    lseek(mfd, 0, SEEK_SET);
+    return mfd;
+}
+
+static int (*backup_system_property_get)(const char*, char*) = nullptr;
+static const prop_info* (*backup_system_property_find)(const char*) = nullptr;
+static void (*backup_system_property_read_callback)(
+        const prop_info*,
+        void (*)(void*, const char*, const char*, uint32_t),
+        void*) = nullptr;
+
+static int Hook_system_property_get(const char* name, char* value) {
+    if (name != nullptr && value != nullptr) {
+        std::lock_guard<std::mutex> lock(g_prop_mutex);
+        auto it = g_spoof_props.find(name);
+        if (it != g_spoof_props.end()) {
+            size_t len = std::min(it->second.size(), static_cast<size_t>(PROP_VALUE_MAX - 1));
+            memcpy(value, it->second.data(), len);
+            value[len] = '\0';
+            return static_cast<int>(len);
+        }
+    }
+    return backup_system_property_get ? backup_system_property_get(name, value) : __system_property_get(name, value);
+}
+
+static const prop_info* Hook_system_property_find(const char* name) {
+    const prop_info* pi = backup_system_property_find ? backup_system_property_find(name) : __system_property_find(name);
+    if (pi != nullptr && name != nullptr) {
+        std::lock_guard<std::mutex> lock(g_prop_mutex);
+        if (g_spoof_props.count(name)) {
+            g_prop_info_names[pi] = name;
+        }
+    }
+    return pi;
+}
+
+struct PropCallbackWrap {
+    void (*orig_cb)(void*, const char*, const char*, uint32_t);
+    void* orig_cookie;
+    std::string spoof_val;
+};
+
+static void WrappedPropCallback(void* cookie, const char* name, const char* value, uint32_t serial) {
+    auto* wrap = reinterpret_cast<PropCallbackWrap*>(cookie);
+    wrap->orig_cb(wrap->orig_cookie, name, wrap->spoof_val.c_str(), serial);
+}
+
+static void Hook_system_property_read_callback(
+        const prop_info* pi,
+        void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial),
+        void* cookie) {
+    if (pi != nullptr && callback != nullptr) {
+        std::string spoof_val;
+        bool has_spoof = false;
+        {
+            std::lock_guard<std::mutex> lock(g_prop_mutex);
+            auto it_name = g_prop_info_names.find(pi);
+            if (it_name != g_prop_info_names.end()) {
+                auto it_val = g_spoof_props.find(it_name->second);
+                if (it_val != g_spoof_props.end()) {
+                    spoof_val = it_val->second;
+                    has_spoof = true;
+                }
+            }
+        }
+        auto* orig_fn = backup_system_property_read_callback
+                ? backup_system_property_read_callback
+                : reinterpret_cast<void (*)(const prop_info*, void (*)(void*, const char*, const char*, uint32_t), void*)>(
+                        dlsym(RTLD_DEFAULT, "__system_property_read_callback"));
+        if (has_spoof && orig_fn != nullptr) {
+            PropCallbackWrap wrap{callback, cookie, spoof_val};
+            orig_fn(pi, WrappedPropCallback, &wrap);
+            return;
+        }
+        if (orig_fn != nullptr) {
+            orig_fn(pi, callback, cookie);
+            return;
+        }
+    }
+    if (backup_system_property_read_callback) {
+        backup_system_property_read_callback(pi, callback, cookie);
+    }
+}
+
+// Function pointer signatures & backups
 
 static int (*backup_stat)(const char*, struct stat*) = nullptr;
 static int (*backup_stat64)(const char*, struct stat64*) = nullptr;
@@ -188,7 +373,15 @@ static int Hook_open(const char* pathname, int flags, ...) {
 
     std::string translated;
     const char* target = pathname;
-    bool is_redirected = PathTranslator::Instance().ToRealPath(pathname, translated);
+    bool hide = false;
+    bool is_redirected = TranslatePathWithAntiDetect(pathname, translated, hide);
+    if (hide) {
+        errno = ENOENT;
+        return -1;
+    }
+    if (IsProcMapsPath(pathname) && (flags & O_ACCMODE) == O_RDONLY) {
+        return OpenMaskedProcMapsFd(pathname);
+    }
     if (is_redirected) {
         target = translated.c_str();
     } else {
@@ -218,7 +411,15 @@ static int Hook_open_2(const char* pathname, int flags) {
 
     std::string translated;
     const char* target = pathname;
-    bool is_redirected = PathTranslator::Instance().ToRealPath(pathname, translated);
+    bool hide = false;
+    bool is_redirected = TranslatePathWithAntiDetect(pathname, translated, hide);
+    if (hide) {
+        errno = ENOENT;
+        return -1;
+    }
+    if (IsProcMapsPath(pathname) && (flags & O_ACCMODE) == O_RDONLY) {
+        return OpenMaskedProcMapsFd(pathname);
+    }
     if (is_redirected) {
         target = translated.c_str();
     } else {
@@ -247,7 +448,20 @@ static FILE* Hook_fopen(const char* pathname, const char* mode) {
 
     std::string translated;
     const char* target = pathname;
-    bool is_redirected = PathTranslator::Instance().ToRealPath(pathname, translated);
+    bool hide = false;
+    bool is_redirected = TranslatePathWithAntiDetect(pathname, translated, hide);
+    if (hide) {
+        errno = ENOENT;
+        return nullptr;
+    }
+    if (IsProcMapsPath(pathname) && (mode == nullptr || mode[0] == 'r')) {
+        int mfd = OpenMaskedProcMapsFd(pathname);
+        if (mfd >= 0) {
+            FILE* f = fdopen(mfd, mode ? mode : "r");
+            if (f != nullptr) return f;
+            close(mfd);
+        }
+    }
     if (is_redirected) {
         target = translated.c_str();
     } else {
@@ -283,9 +497,15 @@ static int Hook_openat(int dirfd, const char* pathname, int flags, ...) {
     std::string translated;
 
     if (!resolved.empty()) {
-        if (PathTranslator::Instance().ToRealPath(resolved, translated)) {
+        bool hide = false;
+        if (TranslatePathWithAntiDetect(resolved.c_str(), translated, hide)) {
             target = translated.c_str();
             dirfd = AT_FDCWD;
+        } else if (hide) {
+            errno = ENOENT;
+            return -1;
+        } else if (IsProcMapsPath(resolved.c_str()) && (flags & O_ACCMODE) == O_RDONLY) {
+            return OpenMaskedProcMapsFd(resolved.c_str());
         } else {
             target = resolved.c_str();
             dirfd = AT_FDCWD;
@@ -1222,6 +1442,9 @@ static void HookLibraryByMap(const lsplt::MapInfo& map) {
     lsplt::RegisterHook(dev, inode, "fstatvfs", reinterpret_cast<void*>(Hook_fstatvfs), reinterpret_cast<void**>(&backup_fstatvfs));
     lsplt::RegisterHook(dev, inode, "fstatvfs64", reinterpret_cast<void*>(Hook_fstatvfs64), reinterpret_cast<void**>(&backup_fstatvfs64));
     lsplt::RegisterHook(dev, inode, "sqlite3_vfs_register", reinterpret_cast<void*>(Hook_sqlite3_vfs_register), reinterpret_cast<void**>(&backup_sqlite3_vfs_register));
+    lsplt::RegisterHook(dev, inode, "__system_property_get", reinterpret_cast<void*>(Hook_system_property_get), reinterpret_cast<void**>(&backup_system_property_get));
+    lsplt::RegisterHook(dev, inode, "__system_property_find", reinterpret_cast<void*>(Hook_system_property_find), reinterpret_cast<void**>(&backup_system_property_find));
+    lsplt::RegisterHook(dev, inode, "__system_property_read_callback", reinterpret_cast<void*>(Hook_system_property_read_callback), reinterpret_cast<void**>(&backup_system_property_read_callback));
 }
 
 } // namespace
@@ -1352,6 +1575,48 @@ JNIEXPORT void JNICALL
 Java_org_lsposed_lspatch_loader_StorageRedirector_nativeRescanNativeLibs(
         JNIEnv* /*env*/, jclass /*clazz*/) {
     lspd::storage::HookAppNativeLibraries();
+}
+
+JNIEXPORT void JNICALL
+Java_org_lsposed_lspatch_loader_StorageRedirector_nativeInitAntiDetect(
+        JNIEnv* env, jclass /*clazz*/,
+        jboolean hideRootFiles, jboolean maskProcMaps, jstring bootIdFilePath,
+        jobjectArray propKeys, jobjectArray propVals) {
+    lspd::storage::g_hide_root_files = hideRootFiles;
+    lspd::storage::g_mask_proc_maps = maskProcMaps;
+    if (bootIdFilePath != nullptr) {
+        const char* c_boot = env->GetStringUTFChars(bootIdFilePath, nullptr);
+        lspd::storage::g_spoof_boot_id_path = c_boot ? c_boot : "";
+        env->ReleaseStringUTFChars(bootIdFilePath, c_boot);
+    } else {
+        lspd::storage::g_spoof_boot_id_path.clear();
+    }
+
+    if (propKeys != nullptr && propVals != nullptr) {
+        jsize len = env->GetArrayLength(propKeys);
+        jsize vlen = env->GetArrayLength(propVals);
+        if (len == vlen) {
+            std::lock_guard<std::mutex> lock(lspd::storage::g_prop_mutex);
+            lspd::storage::g_spoof_props.clear();
+            for (jsize i = 0; i < len; i++) {
+                auto jkey = static_cast<jstring>(env->GetObjectArrayElement(propKeys, i));
+                auto jval = static_cast<jstring>(env->GetObjectArrayElement(propVals, i));
+                if (jkey != nullptr && jval != nullptr) {
+                    const char* ck = env->GetStringUTFChars(jkey, nullptr);
+                    const char* cv = env->GetStringUTFChars(jval, nullptr);
+                    if (ck != nullptr && cv != nullptr) {
+                        lspd::storage::g_spoof_props[ck] = cv;
+                    }
+                    if (ck) env->ReleaseStringUTFChars(jkey, ck);
+                    if (cv) env->ReleaseStringUTFChars(jval, cv);
+                }
+                if (jkey) env->DeleteLocalRef(jkey);
+                if (jval) env->DeleteLocalRef(jval);
+            }
+        }
+    }
+
+    lspd::storage::InstallStoragePltHooks();
 }
 
 } // extern "C"

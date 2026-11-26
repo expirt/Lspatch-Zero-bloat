@@ -12,8 +12,8 @@ import org.matrix.vector.ui.navigation.FloatingNavSettings
 import org.matrix.vector.ui.navigation.NavPanelStore
 import org.matrix.vector.ui.net.NetworkSettings
 
-/** LSPatch's brand seed (warm amber), the default accent when dynamic colour is off. */
-const val LSPATCH_SEED: Int = 0xFFE08A3C.toInt()
+/** LSPatch's brand seed (Botanical Jade), the default accent when dynamic colour is off. */
+const val LSPATCH_SEED: Int = 0xFF005446.toInt()
 
 /**
  * LSPatch's appearance + language preferences, persisted in the app's `settings` store.
@@ -138,6 +138,15 @@ object LSPSettings : AppearanceSettings, LocaleController, NetworkSettings {
         _appLocale.value = tag
     }
 
+    private val _backupDirUri = MutableStateFlow(prefs.getString(KEY_BACKUP_DIR_URI, "") ?: "")
+    /** Persisted SAF tree URI for the one-time selected default backup destination folder. */
+    val backupDirUri: StateFlow<String> = _backupDirUri.asStateFlow()
+
+    fun setBackupDirUri(uri: String) {
+        prefs.edit().putString(KEY_BACKUP_DIR_URI, uri).apply()
+        _backupDirUri.value = uri
+    }
+
     // Listed at build time from the resource folders that carry our own strings.xml, so a language
     // appears the moment a translator's folder lands and no list has to be kept in step by hand --
     // the picker must not offer a language there is no translation for.
@@ -153,6 +162,7 @@ object LSPSettings : AppearanceSettings, LocaleController, NetworkSettings {
     private const val KEY_DOH_ENABLED = "doh_enabled"
     private const val KEY_MANAGE_TAB = "manage_tab"
     private const val KEY_NAV_PANELS = "nav_panels"
+    private const val KEY_BACKUP_DIR_URI = "backup_dir_uri"
 }
 
 /**

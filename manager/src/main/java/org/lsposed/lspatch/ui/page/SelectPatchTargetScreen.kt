@@ -39,8 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.File
 import java.util.UUID
@@ -142,21 +146,7 @@ fun SelectPatchTargetScreen(navigator: Navigator) {
                             alreadyPatched = primary
                             return@onSuccess
                         }
-                        commit(
-                            PatchRequest(
-                                token = UUID.randomUUID().toString(),
-                                target =
-                                    PatchTarget.ApkFiles(
-                                        packageName = primary.app.packageName,
-                                        label = primary.label,
-                                        apkPaths =
-                                            listOf(primary.app.sourceDir) +
-                                                (primary.app.splitSourceDirs ?: emptyArray()),
-                                    ),
-                                mode = PatchMode.Local,
-                                origin = PatchOrigin.New,
-                            )
-                        )
+                        commit(createPatchRequestForApks(infos))
                     }
                     .onFailure {
                         reading = false
@@ -164,6 +154,30 @@ fun SelectPatchTargetScreen(navigator: Navigator) {
                     }
             }
         }
+
+    val pendingFiles by org.lsposed.lspatch.ui.navigation.FileSelection.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingFiles) {
+        val picked = org.lsposed.lspatch.ui.navigation.FileSelection.consume("SelectPatchTarget") ?: return@LaunchedEffect
+        if (picked.isNotEmpty()) {
+            scope.launch {
+                reading = true
+                LSPPackageManager.getAppInfoFromApkFiles(picked)
+                    .onSuccess { infos ->
+                        reading = false
+                        val primary = infos.first()
+                        if (primary.isLSPatched) {
+                            alreadyPatched = primary
+                            return@onSuccess
+                        }
+                        commit(createPatchRequestForApks(infos))
+                    }
+                    .onFailure {
+                        reading = false
+                        snackbarHost.show(it.message ?: errorUnknown, SnackbarTone.Failure)
+                    }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -175,7 +189,16 @@ fun SelectPatchTargetScreen(navigator: Navigator) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { storageLauncher.launch(APK_AND_BUNDLE_TYPES) }) {
+                    IconButton(onClick = {
+                        navigator.go(
+                            org.lsposed.lspatch.ui.navigation.BuiltInFilePicker(
+                                requestedBy = "SelectPatchTarget",
+                                title = "Select APK",
+                                extensions = listOf("apk", "xapk", "apks", "apkm"),
+                                multiSelect = true,
+                            )
+                        )
+                    }) {
                         Icon(
                             Icons.Rounded.FolderOpen,
                             contentDescription = stringResource(R.string.patch_from_storage),
@@ -229,7 +252,8 @@ fun SelectPatchTargetScreen(navigator: Navigator) {
                             AppIcon(
                                 applicationInfo = app.app,
                                 contentDescription = app.label,
-                                size = 24.dp,
+                                size = 44.dp,
+                                modifier = Modifier.clip(RoundedCornerShape(10.dp)),
                             )
                         },
                         label = app.label,

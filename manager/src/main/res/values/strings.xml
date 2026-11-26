@@ -395,4 +395,22 @@
     <string name="manage_microg_monitor_active">Active — Logging auth &amp; MicroG IPC to logcat. Tap to disable.</string>
     <string name="manage_microg_monitor_inactive">Inactive — Tap to turn on real-time Google Sign-In logcat monitoring.</string>
     <string name="manage_view_signin_log">View Google Sign-In Log</string>
+
+    <!-- Dummy Accessibility Service -->
+    <string name="patch_accessibility_dummy">Dummy Accessibility Service</string>
+    <string name="patch_accessibility_dummy_desc">Enable in Android Settings to keep the app working in the background without being killed</string>
+
+    <!-- Custom App Icon -->
+    <string name="patch_custom_icon">Custom App Icon</string>
+    <string name="patch_custom_icon_desc">Replace app launcher icon with any image (PNG, JPG, WEBP, etc.)</string>
+    <string name="patch_custom_icon_selected">Custom Icon Selected</string>
+    <string name="patch_custom_icon_select">Choose Image</string>
+    <string name="patch_custom_icon_remove">Remove Custom Icon</string>
+
+    <!-- Backup & Features -->
+    <string name="nav_backup">Backup</string>
+    <string name="patch_features_title">Features</string>
+    <string name="patch_features_desc">Identity randomizer &amp; anti-detection</string>
+    <string name="patch_embed_backup">Embed Backup (.zip)</string>
+    <string name="patch_embed_backup_desc">Pre-restore app data into this integrated APK on first launch</string>
 </resources>

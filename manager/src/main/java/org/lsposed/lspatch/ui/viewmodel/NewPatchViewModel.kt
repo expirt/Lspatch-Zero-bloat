@@ -152,6 +152,10 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
 
     fun setCrashDebugger(value: Boolean) = mutate { it.copy(crashDebugger = value) }
 
+    fun setAccessibilityDummy(value: Boolean) = mutate { it.copy(accessibilityDummy = value) }
+
+    fun setCustomIconPath(path: String?) = mutate { it.copy(customIconPath = path) }
+
     /**
      * Adds modules to the set, keeping what is already there.
      *
@@ -187,6 +191,24 @@ class NewPatchViewModel(private val token: String) : ViewModel() {
         viewModelScope.launch {
             val installed = LSPPackageManager.installedModuleBindings().filter { it.packageName in packageNames }
             addModules(installed)
+        }
+    }
+
+    fun setFeaturesJson(json: String?) = mutate {
+        it.copy(featuresJson = json?.takeIf { s -> s.isNotBlank() })
+    }
+
+    fun setEmbeddedBackupPath(path: String?) = mutate {
+        it.copy(embeddedBackupPath = path?.takeIf { s -> s.isNotBlank() })
+    }
+
+    fun reloadFromStore() {
+        viewModelScope.launch {
+            PatchRequestStore.get(token)?.let { latest ->
+                if (latest != request) {
+                    request = latest
+                }
+            }
         }
     }
 }

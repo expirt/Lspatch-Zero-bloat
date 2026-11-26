@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import org.lsposed.lspatch.ui.component.rememberAppIcon
+import org.lsposed.lspatch.ui.theme.StatusSuccess
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
@@ -100,6 +112,7 @@ import org.lsposed.lspatch.ui.component.ShizukuSheet
 import org.lsposed.lspatch.ui.component.StayAliveSheet
 import org.lsposed.lspatch.ui.component.hasNotificationPermission
 import org.lsposed.lspatch.ui.component.isIgnoringBatteryOptimizations
+import org.lsposed.lspatch.ui.navigation.AppDetail
 import org.lsposed.lspatch.ui.navigation.NewPatch
 import org.lsposed.lspatch.ui.navigation.TopLevelRoute
 import org.lsposed.lspatch.ui.navigation.Update
@@ -196,86 +209,521 @@ fun HomeScreen(navigator: Navigator) {
     val homeVm = viewModel<HomeViewModel>()
     val update = homeVm.update
 
+    val core = LSPConfig.instance
+    val apps = LSPPackageManager.appList
+    val moduleCount = apps.count { it.isModule }
+    val patchedApps = apps.filter { it.app.metaData?.containsKey("lspatch") == true }
+    val patchedCount = patchedApps.size
+
+    val shizukuVersion = if (granted) ShizukuApi.serverVersion() else null
+    val shizukuText = if (shizukuVersion != null) "v$shizukuVersion" else "Offline"
+
     Scaffold(
-        // The header draws its own status-bar inset so it can run under the bar; letting the
-        // Scaffold consume it would leave a band of plain background above the pane. The bottom is
-        // still the Scaffold's to reserve, for the floating navigation.
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Bottom)
     ) { innerPadding ->
-        Column(Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            StatusHeader(
-                brand = stringResource(R.string.app_name),
-                // A short word beside the brand — "LSPatch Ready" — the way Vector shows "Vector
-                // Active"; the full Shizuku sentence would wrap over the brand. The badge and tone
-                // carry the state; the content description below still speaks the full sentence.
-                statusWord = stringResource(if (granted) R.string.home_status_ready else R.string.home_status_limited),
-                tone = if (granted) StatusTone.Active else StatusTone.Error,
-                ambience = AmbienceKind.from(ambienceKey),
-                ambienceSettings = LSPAmbienceSettings,
-                statusContentDescription =
-                    stringResource(if (granted) R.string.shizuku_available else R.string.shizuku_unavailable),
-                // No status page behind the badge — it is a pure indicator of Shizuku's state.
-                onOpenStatus = null,
-                appearanceLabel = stringResource(R.string.appearance_title),
-                onOpenAppearance = { showAppearance = true },
-                languageLabel = stringResource(R.string.language_title),
-                onOpenLanguage = { showLanguage = true },
-                detail = { contentColor ->
-                    // Exactly Vector's version line: one UpdatableVersion carrying the version and the
-                    // API, marked when a newer STABLE release exists and tappable whether or not one
-                    // does. The mark reflects only stable releases (Home's own check stays on
-                    // /releases/latest), so a lit mark always means a real update to install.
-                    //
-                    // The tap reads the state it is in: with a stable update marked it opens the
-                    // update page on that release; with nothing marked, tapping is taken as a wish to
-                    // see what is brewing, so it opens on the newest canary instead -- the one way in
-                    // to prereleases, offered only to someone who went looking.
-                    val detailText = buildList {
-                        // Version name with the version code beside it -- the same number the
-                        // Manage screen labels an app's loader with, so "Loader 68" there and the
-                        // build here read as one version rather than two unrelated numbers.
-                        add("v${LSPConfig.instance.VERSION_NAME} (${LSPConfig.instance.VERSION_CODE})")
-                        add("API ${LSPConfig.instance.API_CODE}")
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Sticky Top App Bar
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Layers,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "LSPatch",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "zero",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 2.dp),
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showAppearance = true },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = stringResource(R.string.appearance_title),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
-                        .joinToString("  ·  ")
-                    UpdatableVersion(
-                        text = detailText,
-                        hasUpdate = update != null,
-                        color = contentColor.copy(alpha = 0.75f),
-                        markColor = contentColor,
-                        modifier =
-                            Modifier.clickable {
-                                navigator.go(Update(prerelease = update == null))
-                            },
-                    )
-                },
-            )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                }
+            }
 
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                // Ordered by what the reader acts on: the primary action first, the environment it
-                // acts in next, and the project footer last — the way Vector closes its Home with its
-                // repository stats rather than opening with them.
-                // Only while permission is missing: the header already says it is granted, and a
-                // card repeating that would be a row that has to be read to learn nothing. This one
-                // exists to *grant* it.
-                if (!granted) ShizukuGrantCard()
-                Button(
-                    onClick = { startNewPatch(navigator) },
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 16.dp),
+                // Hero Shizuku & Daemon Status Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                            RoundedCornerShape(24.dp)
+                        )
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = null)
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        stringResource(R.string.screen_new_patch),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    // Header: Status badge & version
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9999.dp))
+                                .background(
+                                    if (granted) MaterialTheme.colorScheme.secondaryContainer
+                                    else MaterialTheme.colorScheme.errorContainer
+                                )
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (granted) StatusSuccess else MaterialTheme.colorScheme.error)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (granted) "Shizuku active" else "Shizuku limited",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (granted) MaterialTheme.colorScheme.onSecondaryContainer
+                                else MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+
+                        Text(
+                            text = "v${core.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable {
+                                navigator.go(Update(prerelease = update == null))
+                            }
+                        )
+                    }
+
+                    // Headline & Subtitle
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = if (granted) "Ready to patch" else "Shizuku needed",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = if (granted)
+                                "Wireless debugging bridge connected. Rootless Xposed injection is available."
+                            else
+                                "Grant Shizuku permission to manage and patch applications with system privileges.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    // Glanceable Metrics Grid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .clickable {
+                                    LSPSettings.setManageTab(0)
+                                    navigator.switchTo(TopLevelRoute.Manage)
+                                }
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = "Patched apps",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "$patchedCount",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .clickable {
+                                    LSPSettings.setManageTab(1)
+                                    navigator.switchTo(TopLevelRoute.Manage)
+                                }
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = "Active modules",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "$moduleCount",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+
+                    // Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            onClick = { startNewPatch(navigator) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(9999.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                            contentPadding = PaddingValues(vertical = 14.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Patch APK",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+
+                        Button(
+                            onClick = { navigator.switchTo(TopLevelRoute.Logs) },
+                            shape = RoundedCornerShape(9999.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                        ) {
+                            Text(
+                                text = "Logs",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
-                SystemPropertiesCard(navigator)
+
+                // If Shizuku not granted, display grant card
+                if (!granted) {
+                    ShizukuGrantCard()
+                }
+
+                // Environment Readout Strip
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "Environment",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "System ABI",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = Build.SUPPORTED_ABIS[0],
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Android SDK",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "$androidRelease (API $androidApiLevel)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Shizuku API",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = shizukuText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Patch engine",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "SigBypass v3",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Recently Patched Section
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = "Recently patched",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "View all",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                LSPSettings.setManageTab(0)
+                                navigator.switchTo(TopLevelRoute.Manage)
+                            }
+                        )
+                    }
+
+                    if (patchedApps.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                    RoundedCornerShape(16.dp)
+                                )
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "No patched applications yet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                    RoundedCornerShape(16.dp)
+                                ),
+                        ) {
+                            val recentList = patchedApps.take(4)
+                            recentList.forEachIndexed { index, app ->
+                                val icon = rememberAppIcon(app)
+                                val isLocal = app.app.metaData?.getInt("lspatch") == 0
+                                val mode = if (isLocal) "Local" else "Portable"
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { navigator.go(AppDetail(app.app.packageName)) }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        if (icon != null) {
+                                            Image(
+                                                bitmap = icon,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .clip(RoundedCornerShape(10.dp)),
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Android,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    modifier = Modifier.size(26.dp),
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f, fill = false)) {
+                                            Text(
+                                                text = app.label,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = "$mode · ${app.app.packageName}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { navigator.go(AppDetail(app.app.packageName)) },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
+                                if (index < recentList.lastIndex) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Repository status row
                 RepoStatusRow(homeVm.repo)
                 Spacer(Modifier.height(8.dp))
             }

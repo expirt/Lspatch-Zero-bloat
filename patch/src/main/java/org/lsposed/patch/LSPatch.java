@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.lsposed.lspatch.share.FeatureConfig;
 import org.lsposed.patch.util.JavaLogger;
 import org.lsposed.patch.util.Logger;
 
@@ -222,6 +223,41 @@ public class LSPatch {
             description = "Enable notification-based crash debugger to capture error logs on crash")
     private boolean crashDebugger = false;
 
+    @Parameter(
+            names = {"--accessibility-dummy", "--keep-alive"},
+            description = "Inject dummy accessibility service to keep the app working in the background")
+    private boolean accessibilityDummy = false;
+
+    @Parameter(
+            names = {"--app-icon", "--icon"},
+            description = "Custom app launcher icon image file (PNG, JPG, JPEG, WEBP, etc.)")
+    private String appIcon = null;
+
+    @Parameter(
+            names = {"--anti-detect"},
+            description = "Enable anti-detection protection (hide LSPatch/Xposed traces, packages, dev options, maps)")
+    private boolean antiDetect = false;
+
+    @Parameter(
+            names = {"--spoof-identity", "--randomize-identity"},
+            description = "Generate and spoof a full randomized device identity per patch")
+    private boolean spoofIdentity = false;
+
+    @Parameter(
+            names = {"--spoof-android-id"},
+            description = "Spoof a custom 16-hex Settings.Secure.ANDROID_ID value")
+    private String spoofAndroidId = null;
+
+    @Parameter(
+            names = {"--disable-flag-secure"},
+            description = "Allow screenshots and screen recording by blocking FLAG_SECURE")
+    private boolean disableFlagSecure = false;
+
+    @Parameter(
+            names = {"--embed-backup"},
+            description = "Embed a backup zip into the patched APK for automatic restore on first launch")
+    private String embedBackup = null;
+
     private final JCommander jCommander;
 
     public LSPatch(String... args) {
@@ -264,6 +300,20 @@ public class LSPatch {
                 ? KeystoreSpec.builtIn()
                 : KeystoreSpec.of(
                         new File(keystoreArgs.get(0)), keystoreArgs.get(1), keystoreArgs.get(2), keystoreArgs.get(3));
+        FeatureConfig fc = new FeatureConfig();
+        if (antiDetect) {
+            fc.enableAllAntiDetection();
+        }
+        if (disableFlagSecure) {
+            fc.disableFlagSecure = true;
+        }
+        if (spoofIdentity) {
+            fc.regenerateAll(true);
+        }
+        if (spoofAndroidId != null && !spoofAndroidId.isBlank()) {
+            fc.identitySpoofEnabled = true;
+            fc.androidId = spoofAndroidId.trim();
+        }
         ManifestOverrides overrides = ManifestOverrides.builder()
                 .versionCode(versionCodeOverride)
                 .label(labelOverride)
@@ -292,6 +342,10 @@ public class LSPatch {
                 .sslUnpinning(sslUnpinning)
                 .crashDebugger(crashDebugger)
                 .newPackageName(newPackageName)
+                .accessibilityDummy(accessibilityDummy)
+                .appIconPath(appIcon)
+                .features(fc)
+                .embeddedBackupPath(embedBackup)
                 .build();
         return PatchSpec.builder()
                 .apks(apkPaths.stream().map(File::new).collect(Collectors.toList()))

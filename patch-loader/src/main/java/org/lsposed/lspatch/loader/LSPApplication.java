@@ -1,19 +1,25 @@
 package org.lsposed.lspatch.loader;
 
 import static org.lsposed.lspatch.share.Constants.CONFIG_ASSET_PATH;
+import static org.lsposed.lspatch.share.Constants.DOCUMENTS_PROVIDER_CLASS;
+import static org.lsposed.lspatch.share.Constants.DUMMY_ACCESSIBILITY_SERVICE_CLASS;
 import static org.lsposed.lspatch.share.Constants.ORIGINAL_APK_ASSET_PATH;
 
 import android.app.ActivityThread;
 import android.app.LoadedApk;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.res.CompatibilityInfo;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.system.Os;
 import android.app.AppComponentFactory;
 import android.util.Log;
+import com.google.gson.Gson;
 import dalvik.system.PathClassLoader;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -47,6 +53,7 @@ import org.lsposed.lspatch.service.EmbeddedRemoteServices;
 import org.lsposed.lspatch.service.LocalApplicationService;
 import org.lsposed.lspatch.service.RemoteApplicationService;
 import org.lsposed.lspatch.share.Constants;
+import org.lsposed.lspatch.share.FeatureConfig;
 import org.lsposed.lspatch.share.LSPConfig;
 import org.lsposed.lspatch.share.remote.FrameworkInfo;
 import org.lsposed.lspatch.share.remote.LSPatchXposedService;
@@ -71,6 +78,11 @@ public class LSPApplication {
     private static LoadedApk appLoadedApk;
 
     private static JSONObject config;
+    private static FeatureConfig activeFeatures;
+
+    public static FeatureConfig getActiveFeatures() {
+        return activeFeatures;
+    }
 
     public static boolean isIsolated() {
         return (android.os.Process.myUid() % PER_USER_RANGE) >= FIRST_APP_ZYGOTE_ISOLATED_UID;
@@ -88,20 +100,26 @@ public class LSPApplication {
             return;
         }
 
+        // Unpack embedded backup archive (if present in Integrated APK) before any DB/prefs are opened
+        BackupRestorer.restoreEmbeddedBackupIfNeeded(context, config);
+
         if (config.optBoolean("crashDebugger")) {
             CrashDebugger.install(context);
         }
 
         Log.d(TAG, "Initialize service client");
         IFrameworkService service;
+        String managerPackage = null;
         if (config.optBoolean("useManager")) {
-            var managerPackage = config.optString("managerPackageName", Constants.MANAGER_PACKAGE_NAME);
+            managerPackage = config.optString("managerPackageName", Constants.MANAGER_PACKAGE_NAME);
             if (managerPackage.isEmpty()) managerPackage = Constants.MANAGER_PACKAGE_NAME;
             Log.i(TAG, "Manager package: " + managerPackage);
             service = new RemoteApplicationService(context, managerPackage);
         } else {
             service = new LocalApplicationService(context);
         }
+
+        activeFeatures = resolveFeatures(context, managerPackage);
 
         disableProfile(context);
 
@@ -126,6 +144,13 @@ public class LSPApplication {
         // lifecycle and signature bypass are armed it would run unopposed.
         Startup.trackLoadedApk(appLoadedApk);
 
+        // Install Identity Spoofer and Anti-Detection early (framework hooks) so even AppComponentFactory <clinit>
+        // sees the spoofed identity and clean environment.
+        if (activeFeatures != null) {
+            IdentitySpoofer.installPreApp(context, activeFeatures);
+            AntiDetection.install(context, activeFeatures, context.getPackageName());
+        }
+
         // WARN: Since it uses `XResource`, the following class should not be initialized
         // before forkPostCommon is invoke. Otherwise, you will get failure of XResources
         Log.i(TAG, "Load modules");
@@ -148,6 +173,10 @@ public class LSPApplication {
         // does nothing unless the redirect armed, which keeps the choice read in one place.
         GmsRedirector.answerAvailabilityChecks(appLoadedApk.getClassLoader());
 
+        if (activeFeatures != null) {
+            IdentitySpoofer.installAppHooks(appLoadedApk.getClassLoader(), activeFeatures);
+        }
+
         if (config.optBoolean("useMicroG")) {
             MicroGSupport.init(config.optString("microGVendor", "app.revanced"));
             MicroGLogger.install(context, appLoadedApk.getClassLoader());
@@ -157,14 +186,63 @@ public class LSPApplication {
             SSLUnpinning.install(context, appLoadedApk.getClassLoader());
         }
 
-        // Only after the app class loader exists, and before installContentProviders runs on return
-        // from makeApplication, so the injected DocumentsProvider is resolvable when the platform
-        // instantiates it.
-        if (config.optBoolean("injectDocumentsProvider")) {
-            bridgeDocumentsProviderClass();
-        }
+        // LSPatchDocumentsProvider and DummyAccessibilityService reside in meta-loader (base APK companion dex),
+        // so they are already directly resolvable by appClassLoader without any ClassLoader bridging.
 
         Log.i(TAG, "LSPatch bootstrap completed");
+    }
+
+    private static FeatureConfig resolveFeatures(Context context, String managerPackage) {
+        Gson gson = new Gson();
+        File cacheFile = new File(new File(context.getNoBackupFilesDir(), "lspatch"), "features_cache.json");
+
+        if (config.optBoolean("useManager")) {
+            String[] candidates = new String[] {
+                managerPackage, Constants.MANAGER_PACKAGE_NAME, "org.expirt.lspatch", "io.github.expirt.lspatch"
+            };
+            for (String pkg : candidates) {
+                if (pkg == null || pkg.isEmpty()) continue;
+                try {
+                    Uri uri = Uri.parse("content://" + pkg + Constants.MANAGER_CONFIG_AUTHORITY_SUFFIX);
+                    Bundle res = context.getContentResolver().call(uri, "getAppFeatures", context.getPackageName(), null);
+                    if (res != null && res.containsKey("featuresJson")) {
+                        String json = res.getString("featuresJson");
+                        if (json != null && !json.isEmpty()) {
+                            try {
+                                File parent = cacheFile.getParentFile();
+                                if (parent != null && !parent.exists()) parent.mkdirs();
+                                Files.writeString(cacheFile.toPath(), json, StandardCharsets.UTF_8);
+                            } catch (Throwable ignored) {}
+                            FeatureConfig fc = gson.fromJson(json, FeatureConfig.class);
+                            if (fc != null) {
+                                Log.i(TAG, "Loaded dynamic features from manager (" + pkg + ")");
+                                return fc;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+            if (cacheFile.exists()) {
+                try {
+                    String cached = Files.readString(cacheFile.toPath(), StandardCharsets.UTF_8);
+                    FeatureConfig fc = gson.fromJson(cached, FeatureConfig.class);
+                    if (fc != null) {
+                        Log.i(TAG, "Loaded dynamic features from local cache");
+                        return fc;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+
+        JSONObject embedded = config.optJSONObject("features");
+        if (embedded != null) {
+            try {
+                return gson.fromJson(embedded.toString(), FeatureConfig.class);
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to parse embedded features config", t);
+            }
+        }
+        return null;
     }
 
     /** The loader class the app's class loader must be taught to resolve for issue #65. */
@@ -210,6 +288,26 @@ public class LSPApplication {
                 Method baseInstantiate = AppComponentFactory.class.getMethod("instantiateProvider", ClassLoader.class, String.class);
                 XposedBridge.hookMethod(baseInstantiate, providerHook);
 
+                XC_MethodHook serviceHook = new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (DUMMY_ACCESSIBILITY_SERVICE_CLASS.equals(param.args[1])) {
+                            try {
+                                Class<?> serviceClass = loaderClassLoader.loadClass(DUMMY_ACCESSIBILITY_SERVICE_CLASS);
+                                Object instance = serviceClass.getConstructor().newInstance();
+                                param.setResult(instance);
+                                Log.i(TAG, "Dummy accessibility service: instantiated via AppComponentFactory hook");
+                            } catch (Throwable t) {
+                                Log.e(TAG, "Failed to instantiate dummy accessibility service directly in hook", t);
+                            }
+                        }
+                    }
+                };
+                try {
+                    Method baseInstantiateService = AppComponentFactory.class.getMethod("instantiateService", ClassLoader.class, String.class, Intent.class);
+                    XposedBridge.hookMethod(baseInstantiateService, serviceHook);
+                } catch (Throwable ignored) {}
+
                 if (appLoadedApk != null) {
                     Class<?> factoryClass = null;
                     try {
@@ -236,10 +334,17 @@ public class LSPApplication {
                                 Log.i(TAG, "Hooked custom AppComponentFactory for DocumentsProvider: " + factoryClass.getName());
                             }
                         } catch (Throwable ignored) {}
+                        try {
+                            Method ms = factoryClass.getMethod("instantiateService", ClassLoader.class, String.class, Intent.class);
+                            if (ms.getDeclaringClass() != AppComponentFactory.class) {
+                                XposedBridge.hookMethod(ms, serviceHook);
+                                Log.i(TAG, "Hooked custom AppComponentFactory for DummyAccessibilityService: " + factoryClass.getName());
+                            }
+                        } catch (Throwable ignored) {}
                     }
                 }
             } catch (Throwable t) {
-                Log.w(TAG, "Failed to hook AppComponentFactory for DocumentsProvider", t);
+                Log.w(TAG, "Failed to hook AppComponentFactory for components", t);
             }
 
             // 2. Splice filtering bridge ClassLoader into all relevant classloaders
@@ -252,9 +357,9 @@ public class LSPApplication {
             if (contextClassLoader != null && contextClassLoader != appClassLoader) {
                 bridgeClassLoader(contextClassLoader, loaderClassLoader);
             }
-            Log.i(TAG, "Documents provider: bridged into app class loaders");
+            Log.i(TAG, "Documents provider & Dummy accessibility service: bridged into app class loaders");
         } catch (Throwable t) {
-            Log.e(TAG, "Failed to expose the documents provider to the app class loader", t);
+            Log.e(TAG, "Failed to expose the components to the app class loader", t);
         }
     }
 
@@ -268,7 +373,7 @@ public class LSPApplication {
 
         @Override
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-            if (DOCUMENTS_PROVIDER_CLASS.equals(name)) {
+            if (DOCUMENTS_PROVIDER_CLASS.equals(name) || DUMMY_ACCESSIBILITY_SERVICE_CLASS.equals(name)) {
                 return loaderClassLoader.loadClass(name);
             }
             return super.loadClass(name, resolve);
@@ -276,7 +381,7 @@ public class LSPApplication {
 
         @Override
         protected Class<?> findClass(String name) throws ClassNotFoundException {
-            if (DOCUMENTS_PROVIDER_CLASS.equals(name)) {
+            if (DOCUMENTS_PROVIDER_CLASS.equals(name) || DUMMY_ACCESSIBILITY_SERVICE_CLASS.equals(name)) {
                 return loaderClassLoader.loadClass(name);
             }
             throw new ClassNotFoundException(name);
@@ -284,7 +389,7 @@ public class LSPApplication {
     }
 
     private static void bridgeClassLoader(ClassLoader target, ClassLoader loaderClassLoader) {
-        if (target == null) return;
+        if (target == null || target == loaderClassLoader) return;
         try {
             ClassLoader realParent = target.getParent();
             if (realParent instanceof DocumentsProviderBridgeClassLoader) {
@@ -370,6 +475,9 @@ public class LSPApplication {
 
         if (config.optBoolean("storageRedirectEnabled", false)) {
             StorageRedirector.activate(context, config);
+        }
+        if (activeFeatures != null) {
+            StorageRedirector.applyNativeFeatures(context, config, activeFeatures);
         }
 
         // Register the resource directory for legacy resource hooking. The LoadedApk constructor hook

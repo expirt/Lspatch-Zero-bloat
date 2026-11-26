@@ -46,6 +46,8 @@ import org.lsposed.lspatch.ui.appearance.LSPNavPanelStore
 import org.lsposed.lspatch.ui.appearance.LSPSettings
 import org.lsposed.lspatch.ui.component.ShizukuFailureDialog
 import org.lsposed.lspatch.ui.navigation.AppDetail
+import org.lsposed.lspatch.ui.navigation.BuiltInFilePicker
+import org.lsposed.lspatch.ui.navigation.IdentityFeatures
 import org.lsposed.lspatch.ui.navigation.LogTrace
 import org.lsposed.lspatch.ui.navigation.NewPatch
 import org.lsposed.lspatch.ui.navigation.RepoDetails
@@ -55,6 +57,9 @@ import org.lsposed.lspatch.ui.navigation.TOP_LEVEL_DESTINATIONS
 import org.lsposed.lspatch.ui.navigation.TopLevelRoute
 import org.lsposed.lspatch.ui.navigation.Update
 import org.lsposed.lspatch.ui.page.AppDetailScreen
+import org.lsposed.lspatch.ui.page.BackupScreen
+import org.lsposed.lspatch.ui.page.BuiltInFilePickerScreen
+import org.lsposed.lspatch.ui.page.FeaturesScreen
 import org.lsposed.lspatch.ui.page.HomeScreen
 import org.lsposed.lspatch.ui.page.LogTraceScreen
 import org.lsposed.lspatch.ui.page.LogsScreen
@@ -236,6 +241,7 @@ private fun LSPatchApp(navigator: Navigator, snackbarHostState: SnackbarHostStat
     // BackHandler registers from an effect, which run in composition order, so this one outranks
     // the handler NavDisplay installs and edit mode ends before the stack is touched.
     BackHandler(enabled = editing) { navigator.editingPanels = false }
+    BackHandler(enabled = !editing && navigator.canGoBack) { navigator.back() }
 }
 
 /**
@@ -249,10 +255,29 @@ private fun EntryProviderScope<NavKey>.registerRoutes(navigator: Navigator) {
     entry<TopLevelRoute.Home> { HomeScreen(navigator) }
     entry<TopLevelRoute.Store> { RepoScreen(navigator) }
     entry<TopLevelRoute.Manage> { ManageScreen(navigator) }
+    entry<TopLevelRoute.Backup> { BackupScreen(navigator) }
     entry<TopLevelRoute.Logs> { LogsScreen(navigator) }
 
     entry<SelectPatchTarget> { SelectPatchTargetScreen(navigator) }
+    entry<BuiltInFilePicker> { route ->
+        BuiltInFilePickerScreen(
+            navigator = navigator,
+            requestedBy = route.requestedBy,
+            title = route.title,
+            extensions = route.extensions,
+            multiSelect = route.multiSelect,
+            initialPath = route.initialPath,
+        )
+    }
     entry<NewPatch> { route -> NewPatchScreen(navigator, token = route.token) }
+    entry<IdentityFeatures> { route ->
+        FeaturesScreen(
+            navigator = navigator,
+            token = route.token,
+            packageName = route.packageName,
+            label = route.label,
+        )
+    }
     entry<SelectModules> { route ->
         SelectModulesScreen(
             navigator,

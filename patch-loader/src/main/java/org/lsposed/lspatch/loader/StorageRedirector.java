@@ -100,6 +100,73 @@ public class StorageRedirector {
 
     private static native void nativeRescanNativeLibs();
 
+    private static native void nativeInitAntiDetect(
+            boolean hideRootFiles,
+            boolean maskProcMaps,
+            String bootIdFilePath,
+            String[] propKeys,
+            String[] propVals);
+
+    public static void applyNativeFeatures(
+            Context context, JSONObject config, org.lsposed.lspatch.share.FeatureConfig fc) {
+        if (fc == null || !fc.needsNativeHooks()) return;
+        if (!loadNativeStorageLibrary(context, config)) {
+            Log.w(TAG, "liblspatch_storage.so unavailable; native anti-detect/prop hooks skipped");
+            return;
+        }
+        try {
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            java.util.List<String> vals = new java.util.ArrayList<>();
+            if (fc.antiDetectionEnabled || fc.hideDevOptions) {
+                keys.add("ro.debuggable"); vals.add("0");
+                keys.add("ro.adb.secure"); vals.add("0");
+                keys.add("ro.secure"); vals.add("1");
+                keys.add("init.svc.adbd"); vals.add("stopped");
+            }
+            addPropIfSet(keys, vals, "ro.product.brand", fc.brand);
+            addPropIfSet(keys, vals, "ro.product.system.brand", fc.brand);
+            addPropIfSet(keys, vals, "ro.product.vendor.brand", fc.brand);
+            addPropIfSet(keys, vals, "ro.product.manufacturer", fc.manufacturer);
+            addPropIfSet(keys, vals, "ro.product.system.manufacturer", fc.manufacturer);
+            addPropIfSet(keys, vals, "ro.product.model", fc.model);
+            addPropIfSet(keys, vals, "ro.product.system.model", fc.model);
+            addPropIfSet(keys, vals, "ro.product.vendor.model", fc.model);
+            addPropIfSet(keys, vals, "ro.product.device", fc.device);
+            addPropIfSet(keys, vals, "ro.product.name", fc.product);
+            addPropIfSet(keys, vals, "ro.hardware", fc.hardware);
+            addPropIfSet(keys, vals, "ro.board.platform", fc.board);
+            addPropIfSet(keys, vals, "ro.bootloader", fc.bootloader);
+            addPropIfSet(keys, vals, "ro.build.fingerprint", fc.fingerprint);
+            addPropIfSet(keys, vals, "ro.system.build.fingerprint", fc.fingerprint);
+            addPropIfSet(keys, vals, "ro.vendor.build.fingerprint", fc.fingerprint);
+            addPropIfSet(keys, vals, "ro.serialno", fc.serial);
+            addPropIfSet(keys, vals, "ro.boot.serialno", fc.serial);
+
+            java.io.File bootFile = IdentitySpoofer.getBootIdFile();
+            String bootPath = (bootFile != null && bootFile.exists()) ? bootFile.getAbsolutePath() : null;
+            boolean hideRoot = fc.antiDetectionEnabled || fc.hideRootFiles;
+            boolean maskMaps = fc.antiDetectionEnabled || fc.maskProcMaps || fc.hideLspatchTraces;
+
+            nativeInitAntiDetect(
+                    hideRoot,
+                    maskMaps,
+                    bootPath,
+                    keys.toArray(new String[0]),
+                    vals.toArray(new String[0]));
+            Log.i(TAG, "Applied native anti-detect & sysprop hooks (props=" + keys.size() + ", maskMaps=" + maskMaps + ")");
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to apply native anti-detect hooks", t);
+        }
+    }
+
+    private static void addPropIfSet(
+            java.util.List<String> keys, java.util.List<String> vals, String key, String val) {
+        if (org.lsposed.lspatch.share.FeatureConfig.nonEmpty(val)) {
+            keys.add(key);
+            vals.add(val.trim());
+        }
+    }
+
     private static boolean loadNativeStorageLibrary(Context context, JSONObject config) {
         if (sNativeSpoofLoaded) return true;
         try {

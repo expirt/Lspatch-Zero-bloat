@@ -119,6 +119,11 @@
         </provider>
 
         <provider
+            android:name=".manager.ManagerConfigProvider"
+            android:authorities="${applicationId}.lspatch.config"
+            android:exported="true" />
+
+        <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:enabled="true"

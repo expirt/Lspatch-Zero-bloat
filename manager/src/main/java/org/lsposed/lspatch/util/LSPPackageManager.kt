@@ -935,6 +935,57 @@ object LSPPackageManager {
         return Pair(status, message)
     }
 
+    suspend fun getAppInfoFromApkFiles(paths: List<String>): Result<List<AppInfo>> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val apkFiles = mutableListOf<File>()
+                for (path in paths) {
+                    val src = File(path)
+                    if (!src.exists()) continue
+                    val copied = lspApp.tmpApkDir.resolve(src.name)
+                    src.copyTo(copied, overwrite = true)
+                    val extracted = extractBundle(copied)
+                    if (extracted != null) {
+                        apkFiles.addAll(extracted)
+                        copied.delete()
+                    } else {
+                        apkFiles.add(copied)
+                    }
+                }
+
+                var primary: ApplicationInfo? = null
+                val splits = mutableListOf<String>()
+                val appInfos = apkFiles.mapNotNull { dst ->
+                    val appInfo =
+                        lspApp.packageManager
+                            .getPackageArchiveInfo(
+                                dst.absolutePath,
+                                PackageManager.GET_META_DATA,
+                            )
+                            ?.applicationInfo
+                    appInfo?.sourceDir = dst.absolutePath
+                    if (appInfo == null) {
+                        splits.add(dst.absolutePath)
+                        return@mapNotNull null
+                    }
+                    if (primary == null) {
+                        primary = appInfo
+                    }
+                    val label = lspApp.packageManager.getApplicationLabel(appInfo).toString()
+                    AppInfo(appInfo, label, isModuleApk(appInfo))
+                }
+                primary?.splitSourceDirs = splits.toTypedArray()
+                if (appInfos.isEmpty()) throw IOException("No valid apks found")
+                appInfos
+            }
+                .recoverCatching { t ->
+                    cleanTmpApkDir()
+                    Log.e(TAG, "Failed to load apk files", t)
+                    throw t
+                }
+        }
+    }
+
     suspend fun getAppInfoFromApks(apks: List<Uri>): Result<List<AppInfo>> {
         return withContext(Dispatchers.IO) {
             runCatching {

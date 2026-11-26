@@ -7,6 +7,9 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -109,13 +112,13 @@ fun ModuleManageBody(query: String) {
                     description = item.second.description,
                     icon = {
                         rememberAppIcon(item.first)?.let { bitmap ->
-                                Icon(
-                                    bitmap = bitmap,
-                                    contentDescription = null,
-                                    tint = Color.Unspecified,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
+                            )
+                        }
                     },
                     apiBadge = { ApiBadge(label = "API", value = item.second.api.toString()) },
                     onClick = { sheetFor = item },

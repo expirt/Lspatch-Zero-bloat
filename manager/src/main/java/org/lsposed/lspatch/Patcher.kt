@@ -65,6 +65,10 @@ object Patcher {
                     .sslUnpinning(sslUnpinning)
                     .crashDebugger(crashDebugger)
                     .newPackageName(newPackageName)
+                    .accessibilityDummy(accessibilityDummy)
+                    .appIconPath(customIconPath)
+                    .features(org.lsposed.lspatch.config.AppFeaturesStore.fromJson(featuresJson))
+                    .embeddedBackupPath(embeddedBackupPath)
                     .build()
             )
             .keystore(
@@ -98,7 +102,9 @@ object Patcher {
                         if (missing.size > 1) " (and ${missing.size - 1} more)" else ""
                 )
             }
-            val outputDir = PatchOutputStore.prepare(request.newPackageName ?: request.packageName)
+            val effectivePkg = request.newPackageName?.takeIf { it.isNotBlank() } ?: request.packageName
+            org.lsposed.lspatch.config.AppFeaturesStore.putJson(effectivePkg, request.featuresJson)
+            val outputDir = PatchOutputStore.prepare(effectivePkg)
             val produced = ApkPatcher(logger, request.toSpec(outputDir)).patch()
             if (produced.isEmpty()) throw java.io.IOException("The patcher produced no apk")
             produced

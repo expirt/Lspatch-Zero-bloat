@@ -39,6 +39,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.outlined.Ballot
+import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Api
@@ -62,9 +63,12 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.RemoveModerator
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Terminal
@@ -113,15 +117,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.lsposed.lspatch.R
+import org.lsposed.lspatch.config.AppFeaturesStore
 import org.lsposed.lspatch.config.Configs
 import org.lsposed.lspatch.config.MyKeyStore
 import org.lsposed.lspatch.data.model.ModuleBinding
@@ -143,6 +150,9 @@ import org.lsposed.lspatch.ui.component.settings.AbiStripperSetting
 import org.lsposed.lspatch.ui.component.settings.GmsSetting
 import org.lsposed.lspatch.ui.component.settings.KeystoreSetting
 import org.lsposed.lspatch.ui.component.settings.StorageRedirectSetting
+import org.lsposed.lspatch.ui.navigation.BuiltInFilePicker
+import org.lsposed.lspatch.ui.navigation.FileSelection
+import org.lsposed.lspatch.ui.navigation.IdentityFeatures
 import org.lsposed.lspatch.ui.navigation.ModuleSelection
 import org.lsposed.lspatch.ui.navigation.SelectModules
 import org.lsposed.lspatch.ui.util.LocalSnackbarHost
@@ -182,6 +192,26 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
     // What the module picker chose, applied once on the way back -- see ModuleSelection.
     val selection by ModuleSelection.pending.collectAsState()
     LaunchedEffect(selection) { ModuleSelection.consume(token)?.let { viewModel.addInstalled(it) } }
+
+    val pendingFiles by FileSelection.pending.collectAsState()
+    LaunchedEffect(pendingFiles) {
+        FileSelection.consume("AddModuleFromStorage")?.let { paths ->
+            val bindings = paths.mapNotNull {
+                LSPPackageManager.moduleBindingFromFile(java.io.File(it))
+            }
+            if (bindings.isNotEmpty()) {
+                viewModel.addModules(bindings)
+            }
+        }
+        FileSelection.consume("EmbedBackupZip")?.let { paths ->
+            viewModel.setEmbeddedBackupPath(paths.firstOrNull())
+        }
+    }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.reloadFromStore()
+        onPauseOrDispose {}
+    }
 
     var logExpanded by remember { mutableStateOf(false) }
     var logWrap by rememberSaveable { mutableStateOf(false) }
@@ -345,6 +375,16 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
                             navigator.go(SelectModules(token, viewModel.modules.map { it.packageName }))
                         },
                         onAddFromStorage = { added -> viewModel.addModules(added) },
+                        onOpenModulePicker = {
+                            navigator.go(
+                                BuiltInFilePicker(
+                                    requestedBy = "AddModuleFromStorage",
+                                    title = "Select Module APK",
+                                    extensions = listOf("apk", "xapk"),
+                                    multiSelect = true,
+                                )
+                            )
+                        },
                         onLabel = viewModel::setLabelOverride,
                         onNewPackageName = viewModel::setNewPackageName,
                         onExtractNativeLibs = viewModel::setExtractNativeLibs,
@@ -369,6 +409,22 @@ fun NewPatchScreen(navigator: Navigator, token: String) {
                         onKeepAbis = viewModel::setKeepAbis,
                         onToggleSslUnpinning = viewModel::setSslUnpinning,
                         onToggleCrashDebugger = viewModel::setCrashDebugger,
+                        onToggleAccessibilityDummy = viewModel::setAccessibilityDummy,
+                        onCustomIcon = viewModel::setCustomIconPath,
+                        onOpenFeatures = {
+                            navigator.go(IdentityFeatures(token = token, label = request.label))
+                        },
+                        onPickBackupZip = {
+                            navigator.go(
+                                BuiltInFilePicker(
+                                    requestedBy = "EmbedBackupZip",
+                                    title = "Select Backup (.zip)",
+                                    extensions = listOf("zip"),
+                                    multiSelect = false,
+                                )
+                            )
+                        },
+                        onClearBackupZip = { viewModel.setEmbeddedBackupPath(null) },
                     )
                 else ->
                     Column(
@@ -410,6 +466,7 @@ private fun ConfigureBody(
     onRemoveModule: (String) -> Unit,
     onAddInstalled: () -> Unit,
     onAddFromStorage: (List<ModuleBinding>) -> Unit,
+    onOpenModulePicker: () -> Unit = {},
     onLabel: (String) -> Unit,
     onNewPackageName: (String) -> Unit,
     onExtractNativeLibs: (Boolean) -> Unit,
@@ -434,6 +491,11 @@ private fun ConfigureBody(
     onKeepAbis: (List<String>) -> Unit,
     onToggleSslUnpinning: (Boolean) -> Unit,
     onToggleCrashDebugger: (Boolean) -> Unit,
+    onToggleAccessibilityDummy: (Boolean) -> Unit,
+    onCustomIcon: (String?) -> Unit,
+    onOpenFeatures: () -> Unit,
+    onPickBackupZip: () -> Unit,
+    onClearBackupZip: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -457,6 +519,32 @@ private fun ConfigureBody(
             }
         }
 
+    val iconLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            val bmp = android.graphics.BitmapFactory.decodeStream(stream)
+                            if (bmp != null) {
+                                val tempFile =
+                                    java.io.File(
+                                        context.cacheDir,
+                                        "custom_icon_" + System.currentTimeMillis() + ".png"
+                                    )
+                                java.io.FileOutputStream(tempFile).use { out ->
+                                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                }
+                                onCustomIcon(tempFile.absolutePath)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // ignored
+                    }
+                }
+            }
+        }
+
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -467,21 +555,98 @@ private fun ConfigureBody(
         SectionLabel(stringResource(R.string.patch_mode))
         // Two cards rather than two chips. A chip row reads as a filter over something else; this is
         // the one choice on the screen that changes what the patched app fundamentally is, and the
-        // difference between the modes is a sentence, not a word.
-        ModeCard(
-            selected = request.mode == PatchMode.Local,
-            icon = Icons.Rounded.Api,
-            title = stringResource(R.string.patch_local),
-            summary = stringResource(R.string.patch_local_summary),
-            onClick = { onMode(PatchMode.Local) },
-        )
-        ModeCard(
-            selected = request.mode == PatchMode.Integrated,
-            icon = Icons.Rounded.WorkOutline,
-            title = stringResource(R.string.patch_integrated),
-            summary = stringResource(R.string.patch_integrated_summary),
-            onClick = { onMode(PatchMode.Integrated) },
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val isLocal = request.mode == PatchMode.Local
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (isLocal) MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                    .border(
+                        1.dp,
+                        if (isLocal) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable { onMode(PatchMode.Local) }
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.patch_local),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isLocal) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Icon(
+                        imageVector = if (isLocal) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = if (isLocal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.patch_local_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isLocal) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            val isIntegrated = request.mode == PatchMode.Integrated
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (isIntegrated) MaterialTheme.colorScheme.secondaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                    .border(
+                        1.dp,
+                        if (isIntegrated) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable { onMode(PatchMode.Integrated) }
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.patch_integrated),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isIntegrated) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Icon(
+                        imageVector = if (isIntegrated) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = if (isIntegrated) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.patch_integrated_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isIntegrated) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         ModeComparison(request.mode)
         if (request.mode == PatchMode.Local && modules.isNotEmpty()) {
             // Said while the choice is still open, not after the set has been destroyed: the modules
@@ -549,8 +714,65 @@ private fun ConfigureBody(
                 SheetAction(
                     title = stringResource(R.string.patch_modules_add_storage),
                     icon = Icons.Rounded.FolderOpen,
-                    onClick = { storageLauncher.launch(APK_AND_BUNDLE_TYPES) },
+                    onClick = onOpenModulePicker,
                 )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        val parsedFeatures = remember(request.featuresJson) {
+            AppFeaturesStore.fromJson(request.featuresJson)
+        }
+        val featuresSummary = buildList {
+            if (parsedFeatures.hasAnyAntiDetection()) add("Anti-Detection")
+            if (parsedFeatures.hasAnyIdentitySpoof()) {
+                add(parsedFeatures.model ?: "Identity Spoofed")
+            }
+        }.joinToString(" • ").ifEmpty { stringResource(R.string.patch_features_desc) }
+
+        SectionLabel(stringResource(R.string.patch_features_title))
+        SettingsGroup {
+            SheetAction(
+                title = stringResource(R.string.patch_features_title),
+                subtitle = featuresSummary,
+                icon = Icons.Rounded.Shield,
+                onClick = onOpenFeatures,
+            )
+            if (request.mode == PatchMode.Integrated) {
+                GroupDivider()
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clickable { onPickBackupZip() }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.Restore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.patch_embed_backup),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text =
+                                request.embeddedBackupPath?.let { java.io.File(it).name }
+                                    ?: stringResource(R.string.patch_embed_backup_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (request.embeddedBackupPath != null) {
+                        IconButton(onClick = onClearBackupZip) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Remove")
+                        }
+                    }
+                }
             }
         }
 
@@ -694,19 +916,94 @@ private fun ConfigureBody(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                var clonePkg by rememberSaveable { mutableStateOf(request.newPackageName.orEmpty()) }
-                OutlinedTextField(
-                    value = clonePkg,
-                    onValueChange = {
-                        clonePkg = it.trim()
-                        onNewPackageName(it.trim())
-                    },
-                    label = { Text("Clone Package Name (Optional)") },
-                    placeholder = { Text(request.packageName + ".clone") },
-                    leadingIcon = { Icon(Icons.Rounded.ContentCopy, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                val defaultClonePackageName = remember(request.packageName) { "${request.packageName}.clone" }
+                var cloneEnabled by rememberSaveable(request.packageName) {
+                    mutableStateOf(request.newPackageName != null)
+                }
+                var clonePkg by rememberSaveable(request.packageName) {
+                    mutableStateOf(request.newPackageName ?: defaultClonePackageName)
+                }
+
+                ToggleRow(
+                    title = "Clone package name",
+                    subtitle = if (cloneEnabled) "App ID: $clonePkg" else "Change package identity to install alongside the original app",
+                    checked = cloneEnabled,
+                    icon = Icons.Rounded.ContentCopy,
+                    onCheckedChange = { checked ->
+                        cloneEnabled = checked
+                        if (checked) {
+                            if (clonePkg.isBlank()) clonePkg = defaultClonePackageName
+                            onNewPackageName(clonePkg)
+                        } else {
+                            onNewPackageName("")
+                        }
+                    }
                 )
+
+                AnimatedVisibility(visible = cloneEnabled) {
+                    OutlinedTextField(
+                        value = clonePkg,
+                        onValueChange = {
+                            clonePkg = it.trim()
+                            onNewPackageName(it.trim())
+                        },
+                        label = { Text("Cloned package name") },
+                        placeholder = { Text(defaultClonePackageName) },
+                        leadingIcon = { Icon(Icons.Rounded.DriveFileRenameOutline, contentDescription = null) },
+                        trailingIcon = {
+                            if (clonePkg != defaultClonePackageName) {
+                                IconButton(onClick = {
+                                    clonePkg = defaultClonePackageName
+                                    onNewPackageName(defaultClonePackageName)
+                                }) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Reset to default")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { iconLauncher.launch("image/*") }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.Smartphone,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.patch_custom_icon),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = if (request.customIconPath != null) {
+                                stringResource(R.string.patch_custom_icon_selected) + ": " + java.io.File(request.customIconPath).name
+                            } else {
+                                stringResource(R.string.patch_custom_icon_desc)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (request.customIconPath != null) {
+                        IconButton(onClick = { onCustomIcon(null) }) {
+                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.patch_custom_icon_remove))
+                        }
+                    } else {
+                        OutlinedButton(onClick = { iconLauncher.launch("image/*") }) {
+                            Text(stringResource(R.string.patch_custom_icon_select))
+                        }
+                    }
+                }
                 ToggleRow(
                     title = stringResource(R.string.patch_debuggable),
                     icon = Icons.Rounded.BugReport,
@@ -733,6 +1030,13 @@ private fun ConfigureBody(
                     subtitle = stringResource(R.string.patch_manifest_documents_provider_desc),
                     checked = request.injectDocumentsProvider,
                     onCheckedChange = onInjectDocumentsProvider,
+                )
+                ToggleRow(
+                    title = stringResource(R.string.patch_accessibility_dummy),
+                    icon = Icons.Rounded.Accessibility,
+                    subtitle = stringResource(R.string.patch_accessibility_dummy_desc),
+                    checked = request.accessibilityDummy,
+                    onCheckedChange = onToggleAccessibilityDummy,
                 )
                 // Last of the manifest controls: its chip list and field are the tallest thing here,
                 // so it sits below the compact toggles rather than pushing them down the screen.
@@ -991,44 +1295,63 @@ private fun TargetStrip(request: PatchRequest) {
     Row(
         modifier =
             Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                    RoundedCornerShape(16.dp)
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             androidx.compose.foundation.Image(
                 bitmap = icon,
                 contentDescription = null,
-                modifier = Modifier.size(44.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp)),
             )
         } else {
-            Icon(
-                Icons.Rounded.Android,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(44.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Android,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
         }
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
+            Text(
+                text = request.label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text =
                     buildList {
-                            if (version.isNotBlank()) add("v" + version)
-                            if (size > 0) add(Formatter.formatShortFileSize(context, size))
-                            if (request.target.apkPaths.size > 1) {
-                                add(stringResource(R.string.patch_patched_splits, request.target.apkPaths.size - 1))
-                            }
-                        }
-                        .joinToString("  ·  "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(originLabel(request)),
+                        if (version.isNotBlank()) add("v$version")
+                        if (size > 0) add(Formatter.formatShortFileSize(context, size))
+                        add(request.packageName)
+                    }.joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RemoveModerator
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Upgrade
 import androidx.compose.material.icons.rounded.WorkOutline
 import androidx.compose.material3.Button
@@ -91,6 +92,7 @@ import org.lsposed.lspatch.share.Constants
 import org.lsposed.lspatch.share.LSPConfig
 import org.lsposed.lspatch.ui.component.DetailTopBar
 import org.lsposed.lspatch.ui.component.rememberExportApk
+import org.lsposed.lspatch.ui.navigation.IdentityFeatures
 import org.lsposed.lspatch.ui.navigation.ModuleSelection
 import org.lsposed.lspatch.ui.navigation.SelectModules
 import org.lsposed.lspatch.ui.page.manage.AppActionSheet
@@ -388,6 +390,15 @@ fun AppDetailScreen(navigator: Navigator, packageName: String) {
             item {
                 DetailSectionLabel(stringResource(R.string.appdetail_actions), Icons.Rounded.AutoAwesome)
                 DetailCard {
+                    ActionDrawerItem(
+                        icon = Icons.Rounded.Shield,
+                        title = stringResource(R.string.patch_features_title),
+                        subtitle =
+                            if (mode == PatchMode.Local) "Identity randomizer & anti-detection (dynamic)"
+                            else "Identity randomizer & anti-detection (applies on re-patch)",
+                    ) {
+                        navigator.go(IdentityFeatures(packageName = packageName, label = app.label))
+                    }
                     ActionDrawerItem(
                         icon = Icons.Rounded.AutoAwesome,
                         title = stringResource(R.string.manage_repatch),

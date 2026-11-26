@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
@@ -44,6 +45,7 @@ import org.lsposed.patch.microg.MicroGPatcher;
 import org.lsposed.patch.util.ApkSignatureHelper;
 import org.lsposed.patch.util.Logger;
 import org.lsposed.patch.util.ManifestParser;
+import pxb.android.axml.AxmlParser;
 import pxb.android.axml.AxmlReader;
 import pxb.android.axml.AxmlVisitor;
 import pxb.android.axml.AxmlWriter;
@@ -209,7 +211,9 @@ public final class ApkPatcher {
                     spec.manifestOverrides().customRules.isEmpty()
                             ? null
                             : spec.manifestOverrides().customRules.toArray(new String[0]),
-                    spec.manifestOverrides().newPackageName);
+                    spec.manifestOverrides().newPackageName,
+                    spec.manifestOverrides().accessibilityDummy,
+                    spec.manifestOverrides().features);
             byte[] configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
 
             rewriteManifest(
@@ -226,13 +230,22 @@ public final class ApkPatcher {
                 addLoaderPayload(dstZFile);
                 embedModules(dstZFile, index, total);
             }
-            if (spec.manifestOverrides().storageRedirectEnabled) {
+            if (spec.manifestOverrides().storageRedirectEnabled
+                    || (spec.manifestOverrides().features != null
+                            && spec.manifestOverrides().features.needsNativeHooks())) {
                 addStoragePayload(dstZFile);
+            }
+            if (spec.manifestOverrides().embeddedBackupPath != null) {
+                addEmbeddedBackup(dstZFile, spec.manifestOverrides().embeddedBackupPath);
             }
             copyRemainingEntries(srcZFile, dstZFile);
 
             if (spec.manifestOverrides().useMicroG) {
                 MicroGPatcher.process(dstZFile, spec.manifestOverrides().microGVendor, logger);
+            }
+
+            if (spec.manifestOverrides().appIconPath != null) {
+                replaceAppIcon(srcZFile, dstZFile, spec.manifestOverrides().appIconPath);
             }
 
             dstZFile.realign();
@@ -487,6 +500,21 @@ public final class ApkPatcher {
         }
     }
 
+    /** Embeds a backup archive into integrated APKs for automatic restore on first launch. */
+    private void addEmbeddedBackup(ZFile dstZFile, String backupPath) throws IOException {
+        File backupFile = new File(backupPath);
+        if (!backupFile.exists() || !backupFile.isFile()) {
+            logger.e("Embedded backup file not found: " + backupPath);
+            return;
+        }
+        logger.i("Embedding backup data: " + backupFile.getName());
+        try (InputStream is = new java.io.FileInputStream(backupFile)) {
+            dstZFile.add(Constants.BACKUP_ASSET_PATH, is, false);
+        } catch (IOException e) {
+            throw new PatchException("Error when embedding backup archive", e);
+        }
+    }
+
     /**
      * Bakes each module apk in under its own package name.
      *
@@ -594,6 +622,11 @@ public final class ApkPatcher {
         property.addApplicationAttribute(new AttributeItem(NodeValue.Application.DEBUGGABLE, spec.debuggable()));
         property.addApplicationAttribute(new AttributeItem("appComponentFactory", PROXY_APP_COMPONENT_FACTORY));
         property.addMetaData(new ModificationProperty.MetaData("lspatch", metadata));
+        String effectivePackageName = (spec.manifestOverrides().newPackageName != null
+                && !spec.manifestOverrides().newPackageName.isEmpty())
+                ? spec.manifestOverrides().newPackageName
+                : packageName;
+        addBackupProvider(property, effectivePackageName);
         applyManifestOverrides(property, packageName, originalSignature);
         // TODO: replace query_all with queries -> manager
         if (spec.useManager()) {
@@ -629,7 +662,9 @@ public final class ApkPatcher {
             throws IOException {
         ManifestOverrides o = spec.manifestOverrides();
         if (o.isEmpty()) return;
+        String effectivePackageName = packageName;
         if (o.newPackageName != null && !o.newPackageName.isEmpty()) {
+            effectivePackageName = o.newPackageName;
             logger.i("Override packageName (cloning): " + packageName + " -> " + o.newPackageName);
             property.addManifestAttribute(new AttributeItem(NodeValue.Manifest.PACKAGE, o.newPackageName).setNamespace(null));
             final String oldPkg = packageName;
@@ -677,7 +712,7 @@ public final class ApkPatcher {
             property.addUsesPermission(permission);
         }
         if (o.injectDocumentsProvider) {
-            addDocumentsProvider(property, packageName);
+            addDocumentsProvider(property, effectivePackageName);
         }
         if (o.gmsReplacementPackage != null) {
             if (!Constants.isGmsReplacement(o.gmsReplacementPackage)) {
@@ -708,6 +743,9 @@ public final class ApkPatcher {
             logger.i("Add fake signature");
             property.addMetaData(new ModificationProperty.MetaData("fake-signature", originalSignature));
             property.addUsesPermission("android.permission.FAKE_PACKAGE_SIGNATURE");
+        }
+        if (o.accessibilityDummy) {
+            addAccessibilityDummyService(property);
         }
     }
 
@@ -884,6 +922,7 @@ public final class ApkPatcher {
     private void addDocumentsProvider(ModificationProperty property, String packageName) {
         String authority = packageName + Constants.DOCUMENTS_PROVIDER_AUTHORITY_SUFFIX;
         logger.i("Add documents provider: " + authority);
+        property.addDeleteProviderAuthorities(authority);
         List<AttributeItem> attributes = new ArrayList<>();
         attributes.add(new AttributeItem(NodeValue.Application.NAME, Constants.DOCUMENTS_PROVIDER_CLASS));
         attributes.add(new AttributeItem(NodeValue.Application.Provider.AUTHORITIES, authority));
@@ -892,5 +931,413 @@ public final class ApkPatcher {
         attributes.add(
                 new AttributeItem(NodeValue.Application.Component.PERMISSION, "android.permission.MANAGE_DOCUMENTS"));
         property.addProvider(attributes, "android.content.action.DOCUMENTS_PROVIDER");
+    }
+
+    /**
+     * Declares LSPatch's authenticated backup/restore ContentProvider so the manager can access
+     * the app's private data directory cleanly even when storage redirection is off.
+     */
+    private void addBackupProvider(ModificationProperty property, String packageName) {
+        String authority = packageName + Constants.BACKUP_PROVIDER_AUTHORITY_SUFFIX;
+        property.addDeleteProviderAuthorities(authority);
+        List<AttributeItem> attributes = new ArrayList<>();
+        attributes.add(new AttributeItem(NodeValue.Application.NAME, Constants.BACKUP_PROVIDER_CLASS));
+        attributes.add(new AttributeItem(NodeValue.Application.Provider.AUTHORITIES, authority));
+        attributes.add(new AttributeItem("exported", Boolean.TRUE));
+        property.addProvider(attributes, null);
+    }
+
+    private void addAccessibilityDummyService(ModificationProperty property) {
+        logger.i("Add dummy accessibility service: " + Constants.DUMMY_ACCESSIBILITY_SERVICE_CLASS);
+        List<AttributeItem> attributes = new ArrayList<>();
+        attributes.add(new AttributeItem(NodeValue.Application.NAME, Constants.DUMMY_ACCESSIBILITY_SERVICE_CLASS));
+        attributes.add(new AttributeItem(NodeValue.Application.Component.PERMISSION, "android.permission.BIND_ACCESSIBILITY_SERVICE"));
+        attributes.add(new AttributeItem("exported", Boolean.TRUE));
+        property.addService(attributes, "android.accessibilityservice.AccessibilityService");
+    }
+
+    private void replaceAppIcon(ZFile srcZFile, ZFile dstZFile, String iconPath) {
+        try {
+            logger.i("Replacing app icon with custom image: " + iconPath);
+            File iconFile = new File(iconPath);
+            byte[] iconPngBytes = loadIconAsPngBytes(iconFile);
+            if (iconPngBytes == null || iconPngBytes.length == 0) {
+                logger.e("Failed to read custom icon bytes; skipping icon replacement");
+                return;
+            }
+
+            // 1. Parse AndroidManifest.xml from dstZFile to find all icon resource IDs
+            Set<Integer> iconResIds = new LinkedHashSet<>();
+            StoredEntry manifestEntry = dstZFile.get(ANDROID_MANIFEST_XML);
+            if (manifestEntry == null) manifestEntry = srcZFile.get(ANDROID_MANIFEST_XML);
+            if (manifestEntry != null) {
+                try (InputStream is = manifestEntry.open()) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int r;
+                    while ((r = is.read(buf)) != -1) {
+                        baos.write(buf, 0, r);
+                    }
+                    AxmlParser parser = new AxmlParser(baos.toByteArray());
+                    while (true) {
+                        int type = parser.next();
+                        if (type == AxmlParser.END_FILE) break;
+                        if (type == AxmlParser.START_TAG) {
+                            String tagName = parser.getName();
+                            if ("application".equals(tagName) || "activity".equals(tagName) || "activity-alias".equals(tagName)) {
+                                int attrCount = parser.getAttributeCount();
+                                for (int i = 0; i < attrCount; i++) {
+                                    int attrRes = parser.getAttrResId(i);
+                                    if (attrRes == 0x01010002 || attrRes == 0x0101052c) { // icon or roundIcon
+                                        Object val = parser.getAttrValue(i);
+                                        if (val instanceof Integer && ((Integer) val) != 0) {
+                                            iconResIds.add((Integer) val);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable t) {
+                    logger.d("Failed to parse manifest icon attributes: " + t.getMessage());
+                }
+            }
+
+            logger.i("Discovered icon resource IDs from manifest: " + iconResIds);
+
+            // 2. Read resources.arsc to resolve file paths
+            StoredEntry arscEntry = dstZFile.get("resources.arsc");
+            if (arscEntry == null) arscEntry = srcZFile.get("resources.arsc");
+            Set<String> matchedIconFiles = new LinkedHashSet<>();
+            Set<String> xmlIconFiles = new LinkedHashSet<>();
+
+            if (arscEntry != null) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                try (InputStream is = arscEntry.open()) {
+                    byte[] buf = new byte[16384];
+                    int r;
+                    while ((r = is.read(buf)) != -1) {
+                        baos.write(buf, 0, r);
+                    }
+                }
+                byte[] arscBytes = baos.toByteArray();
+                ArscParser arscParser = new ArscParser(arscBytes);
+                Set<String> resolvedFiles = arscParser.resolveResourceFiles(iconResIds);
+                matchedIconFiles.addAll(resolvedFiles);
+
+                // Check if any resolved file is an adaptive-icon XML, and resolve child drawables
+                Set<Integer> childResIds = new LinkedHashSet<>();
+                for (String file : resolvedFiles) {
+                    if (file.endsWith(".xml")) {
+                        xmlIconFiles.add(file);
+                        StoredEntry xmlEntry = dstZFile.get(file);
+                        if (xmlEntry == null) xmlEntry = srcZFile.get(file);
+                        if (xmlEntry != null) {
+                            try (InputStream is = xmlEntry.open()) {
+                                ByteArrayOutputStream xBaos = new ByteArrayOutputStream();
+                                byte[] xBuf = new byte[8192];
+                                int xr;
+                                while ((xr = is.read(xBuf)) != -1) {
+                                    xBaos.write(xBuf, 0, xr);
+                                }
+                                AxmlParser xmlParser = new AxmlParser(xBaos.toByteArray());
+                                while (true) {
+                                    int type = xmlParser.next();
+                                    if (type == AxmlParser.END_FILE) break;
+                                    if (type == AxmlParser.START_TAG) {
+                                        int attrCount = xmlParser.getAttributeCount();
+                                        for (int i = 0; i < attrCount; i++) {
+                                            int attrRes = xmlParser.getAttrResId(i);
+                                            if (attrRes == 0x01010199) { // android:drawable
+                                                Object val = xmlParser.getAttrValue(i);
+                                                if (val instanceof Integer && ((Integer) val) != 0) {
+                                                    childResIds.add((Integer) val);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                }
+
+                if (!childResIds.isEmpty()) {
+                    logger.d("Discovered child drawable resources in adaptive icons: " + childResIds);
+                    Set<String> childFiles = arscParser.resolveResourceFiles(childResIds);
+                    matchedIconFiles.addAll(childFiles);
+                }
+
+                // If any XML files were found, patch resources.arsc in-place (.xml -> .png)
+                if (!xmlIconFiles.isEmpty()) {
+                    logger.i("Patching adaptive icon XML references in resources.arsc: " + xmlIconFiles);
+                    byte[] patchedArsc = arscParser.patchXmlExtensionsToPng(xmlIconFiles);
+                    dstZFile.add("resources.arsc", new ByteArrayInputStream(patchedArsc), false);
+                }
+            }
+
+            // Fallback scan: add standard launcher icon files if none found
+            if (matchedIconFiles.isEmpty()) {
+                for (StoredEntry entry : dstZFile.entries()) {
+                    String name = entry.getCentralDirectoryHeader().getName();
+                    if (name.startsWith("res/") && (name.contains("ic_launcher") || name.contains("app_icon"))) {
+                        matchedIconFiles.add(name);
+                    }
+                }
+            }
+
+            logger.i("Replacing " + matchedIconFiles.size() + " icon assets across all densities...");
+            for (String file : matchedIconFiles) {
+                logger.d("Replacing icon file: " + file);
+                dstZFile.add(file, new ByteArrayInputStream(iconPngBytes), false);
+                if (file.endsWith(".xml")) {
+                    String pngPath = file.substring(0, file.length() - 4) + ".png";
+                    dstZFile.add(pngPath, new ByteArrayInputStream(iconPngBytes), false);
+                }
+            }
+            logger.i("App icon successfully replaced!");
+        } catch (Throwable t) {
+            logger.e("Failed to replace app icon: " + t.getMessage());
+        }
+    }
+
+    private byte[] loadIconAsPngBytes(File imageFile) throws IOException {
+        if (!imageFile.exists() || !imageFile.isFile()) {
+            throw new PatchException("Custom icon file does not exist: " + imageFile);
+        }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (InputStream is = new java.io.FileInputStream(imageFile)) {
+            byte[] buf = new byte[8192];
+            int r;
+            while ((r = is.read(buf)) != -1) {
+                baos.write(buf, 0, r);
+            }
+        }
+        byte[] rawBytes = baos.toByteArray();
+        if (rawBytes.length >= 8
+                && (rawBytes[0] & 0xFF) == 0x89
+                && rawBytes[1] == 'P'
+                && rawBytes[2] == 'N'
+                && rawBytes[3] == 'G'
+                && rawBytes[4] == 0x0D
+                && rawBytes[5] == 0x0A
+                && rawBytes[6] == 0x1A
+                && rawBytes[7] == 0x0A) {
+            return rawBytes;
+        }
+
+        try {
+            Class<?> bfClass = Class.forName("android.graphics.BitmapFactory");
+            Method decodeByteArray = bfClass.getMethod("decodeByteArray", byte[].class, int.class, int.class);
+            Object bitmap = decodeByteArray.invoke(null, rawBytes, 0, rawBytes.length);
+            if (bitmap != null) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                Class<?> compressFormatClass = Class.forName("android.graphics.Bitmap$CompressFormat");
+                Object pngFormat = Enum.valueOf((Class<Enum>) compressFormatClass, "PNG");
+                Method compress = bitmap.getClass().getMethod("compress", compressFormatClass, int.class, java.io.OutputStream.class);
+                compress.invoke(bitmap, pngFormat, 100, out);
+                return out.toByteArray();
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            Class<?> imageIoClass = Class.forName("javax.imageio.ImageIO");
+            Method readMethod = imageIoClass.getMethod("read", InputStream.class);
+            Object bufferedImage = readMethod.invoke(null, new ByteArrayInputStream(rawBytes));
+            if (bufferedImage != null) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                Method writeMethod = imageIoClass.getMethod("write", Class.forName("java.awt.image.RenderedImage"), String.class, java.io.OutputStream.class);
+                boolean ok = (Boolean) writeMethod.invoke(null, bufferedImage, "PNG", out);
+                if (ok && out.size() > 0) {
+                    return out.toByteArray();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return rawBytes;
+    }
+
+    private static class ArscParser {
+        private final byte[] data;
+        private final List<String> globalStrings = new ArrayList<>();
+        private int stringPoolPos = -1;
+        private boolean isUtf8 = false;
+
+        ArscParser(byte[] data) {
+            this.data = data;
+            parseStringPool();
+        }
+
+        private void parseStringPool() {
+            if (data.length < 12) return;
+            int pos = 12;
+            if (pos + 28 > data.length) return;
+            int type = getShort(pos);
+            if (type != 0x0001) return;
+            stringPoolPos = pos;
+            int flags = getInt(pos + 16);
+            isUtf8 = (flags & (1 << 8)) != 0;
+            int stringCount = getInt(pos + 8);
+            int stringsStart = getInt(pos + 20);
+            int stringsDataStart = pos + stringsStart;
+
+            int offsetsPos = pos + 28;
+            for (int i = 0; i < stringCount; i++) {
+                if (offsetsPos + 4 > data.length) break;
+                int strOffset = stringsDataStart + getInt(offsetsPos);
+                offsetsPos += 4;
+                if (strOffset >= data.length) {
+                    globalStrings.add("");
+                    continue;
+                }
+                if (isUtf8) {
+                    int p = strOffset;
+                    int u16len = data[p++] & 0xFF;
+                    if ((u16len & 0x80) != 0) p++;
+                    if (p >= data.length) {
+                        globalStrings.add("");
+                        continue;
+                    }
+                    int u8len = data[p++] & 0xFF;
+                    if ((u8len & 0x80) != 0) {
+                        if (p >= data.length) {
+                            globalStrings.add("");
+                            continue;
+                        }
+                        u8len = ((u8len & 0x7F) << 8) | (data[p++] & 0xFF);
+                    }
+                    if (p + u8len <= data.length) {
+                        globalStrings.add(new String(data, p, u8len, StandardCharsets.UTF_8));
+                    } else {
+                        globalStrings.add("");
+                    }
+                } else {
+                    int p = strOffset;
+                    int u16len = getShort(p);
+                    p += 2;
+                    if ((u16len & 0x8000) != 0) {
+                        u16len = ((u16len & 0x7FFF) << 16) | getShort(p);
+                        p += 2;
+                    }
+                    int byteLen = u16len * 2;
+                    if (p + byteLen <= data.length) {
+                        globalStrings.add(new String(data, p, byteLen, StandardCharsets.UTF_16LE));
+                    } else {
+                        globalStrings.add("");
+                    }
+                }
+            }
+        }
+
+        private int getShort(int offset) {
+            if (offset < 0 || offset + 2 > data.length) return 0;
+            return (data[offset] & 0xFF) | ((data[offset + 1] & 0xFF) << 8);
+        }
+
+        private int getInt(int offset) {
+            if (offset < 0 || offset + 4 > data.length) return 0;
+            return (data[offset] & 0xFF)
+                    | ((data[offset + 1] & 0xFF) << 8)
+                    | ((data[offset + 2] & 0xFF) << 16)
+                    | ((data[offset + 3] & 0xFF) << 24);
+        }
+
+        public Set<String> resolveResourceFiles(Set<Integer> targetResIds) {
+            Set<String> files = new LinkedHashSet<>();
+            if (stringPoolPos < 0) return files;
+            int chunkSize = getInt(stringPoolPos + 4);
+            int pkgPos = stringPoolPos + chunkSize;
+            while (pkgPos + 8 <= data.length) {
+                int chunkType = getShort(pkgPos);
+                int chunkHeaderSize = getShort(pkgPos + 2);
+                int currentChunkSize = getInt(pkgPos + 4);
+                if (currentChunkSize <= 0 || pkgPos + currentChunkSize > data.length) break;
+
+                if (chunkType == 0x0200) { // RES_TABLE_PACKAGE_TYPE
+                    int pkgId = getInt(pkgPos + 8);
+                    int innerPos = pkgPos + chunkHeaderSize;
+                    while (innerPos + 8 <= pkgPos + currentChunkSize) {
+                        int innerType = getShort(innerPos);
+                        int innerHeaderSize = getShort(innerPos + 2);
+                        int innerChunkSize = getInt(innerPos + 4);
+                        if (innerChunkSize <= 0 || innerPos + innerChunkSize > pkgPos + currentChunkSize) break;
+
+                        if (innerType == 0x0201) { // RES_TABLE_TYPE_TYPE
+                            int typeId = data[innerPos + 8] & 0xFF;
+                            int entryCount = getInt(innerPos + 12);
+                            int entriesStart = getInt(innerPos + 16);
+                            int offsetTablePos = innerPos + innerHeaderSize;
+
+                            for (int entryIdx = 0; entryIdx < entryCount; entryIdx++) {
+                                if (offsetTablePos + 4 > innerPos + innerChunkSize) break;
+                                int entryOffset = getInt(offsetTablePos);
+                                offsetTablePos += 4;
+                                if (entryOffset == -1 || entryOffset == 0xFFFFFFFF) continue;
+
+                                int resId = (pkgId << 24) | (typeId << 16) | entryIdx;
+                                if (targetResIds.contains(resId)) {
+                                    int entryPtr = innerPos + entriesStart + entryOffset;
+                                    if (entryPtr + 8 <= data.length) {
+                                        int eSize = getShort(entryPtr);
+                                        int eFlags = getShort(entryPtr + 2);
+                                        if ((eFlags & 1) == 0) { // Simple entry
+                                            int valPtr = entryPtr + eSize;
+                                            if (valPtr + 8 <= data.length) {
+                                                int dataType = data[valPtr + 3] & 0xFF;
+                                                int strIdx = getInt(valPtr + 4);
+                                                if (dataType == 3 && strIdx >= 0 && strIdx < globalStrings.size()) {
+                                                    String file = globalStrings.get(strIdx);
+                                                    if (file != null && !file.isEmpty()) {
+                                                        files.add(file);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        innerPos += innerChunkSize;
+                    }
+                }
+                pkgPos += currentChunkSize;
+            }
+            return files;
+        }
+
+        public byte[] patchXmlExtensionsToPng(Set<String> xmlFiles) {
+            byte[] copy = Arrays.copyOf(data, data.length);
+            for (String xmlFile : xmlFiles) {
+                if (!xmlFile.endsWith(".xml")) continue;
+                String pngFile = xmlFile.substring(0, xmlFile.length() - 4) + ".png";
+                byte[] targetUtf8 = xmlFile.getBytes(StandardCharsets.UTF_8);
+                byte[] replUtf8 = pngFile.getBytes(StandardCharsets.UTF_8);
+                replaceBytes(copy, targetUtf8, replUtf8);
+
+                byte[] targetUtf16 = xmlFile.getBytes(StandardCharsets.UTF_16LE);
+                byte[] replUtf16 = pngFile.getBytes(StandardCharsets.UTF_16LE);
+                replaceBytes(copy, targetUtf16, replUtf16);
+            }
+            return copy;
+        }
+
+        private static void replaceBytes(byte[] src, byte[] target, byte[] replacement) {
+            if (target.length != replacement.length) return;
+            for (int i = 0; i <= src.length - target.length; i++) {
+                boolean match = true;
+                for (int j = 0; j < target.length; j++) {
+                    if (src[i + j] != target[j]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    System.arraycopy(replacement, 0, src, i, replacement.length);
+                    i += target.length - 1;
+                }
+            }
+        }
     }
 }

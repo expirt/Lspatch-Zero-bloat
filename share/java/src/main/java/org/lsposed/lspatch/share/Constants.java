@@ -7,6 +7,7 @@ public class Constants {
     final static public String META_LOADER_DEX_ASSET_PATH = "assets/lspatch/metaloader.dex";
     final static public String ORIGINAL_APK_ASSET_PATH = "assets/lspatch/origin.apk";
     final static public String EMBEDDED_MODULES_ASSET_PATH = "assets/lspatch/modules/";
+    final static public String BACKUP_ASSET_PATH = "assets/lspatch/backup.zip";
 
     final static public String PATCH_FILE_SUFFIX = "-lspatched.apk";
     final static public String PROXY_APP_COMPONENT_FACTORY = "org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub";
@@ -17,6 +18,10 @@ public class Constants {
      */
     final static public String DOCUMENTS_PROVIDER_CLASS = "org.lsposed.lspatch.loader.LSPatchDocumentsProvider";
     final static public String DOCUMENTS_PROVIDER_AUTHORITY_SUFFIX = ".lspatch.documents";
+    final static public String BACKUP_PROVIDER_CLASS = "org.lsposed.lspatch.loader.LSPatchBackupProvider";
+    final static public String BACKUP_PROVIDER_AUTHORITY_SUFFIX = ".lspatch.backup";
+    final static public String MANAGER_CONFIG_AUTHORITY_SUFFIX = ".lspatch.config";
+    final static public String DUMMY_ACCESSIBILITY_SERVICE_CLASS = "org.lsposed.lspatch.loader.DummyAccessibilityService";
     final static public String MANAGER_PACKAGE_NAME = "org.expirt.lspatch";
 
     final static public String MANAGER_SERVICE_NAME = "org.lsposed.lspatch.manager.ModuleService";

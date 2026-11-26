@@ -1,5 +1,6 @@
 package org.lsposed.patch;
 
+import org.lsposed.lspatch.share.FeatureConfig;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -108,6 +109,10 @@ public final class ManifestOverrides {
     public final boolean crashDebugger;
     public final List<String> customRules;
     public final String newPackageName;
+    public final boolean accessibilityDummy;
+    public final String appIconPath;
+    public final FeatureConfig features;
+    public final String embeddedBackupPath;
 
     private ManifestOverrides(Builder b) {
         this.versionCode = b.versionCode;
@@ -135,6 +140,10 @@ public final class ManifestOverrides {
         this.crashDebugger = b.crashDebugger;
         this.customRules = Collections.unmodifiableList(new ArrayList<>(b.customRules));
         this.newPackageName = b.newPackageName;
+        this.accessibilityDummy = b.accessibilityDummy;
+        this.appIconPath = b.appIconPath;
+        this.features = (b.features != null && !b.features.isEmpty()) ? b.features.copy() : null;
+        this.embeddedBackupPath = b.embeddedBackupPath;
     }
 
     /** True when nothing is overridden, so the patcher can skip the work entirely. */
@@ -154,7 +163,11 @@ public final class ManifestOverrides {
                 && !sslUnpinning
                 && !crashDebugger
                 && customRules.isEmpty()
-                && newPackageName == null;
+                && newPackageName == null
+                && !accessibilityDummy
+                && appIconPath == null
+                && features == null
+                && embeddedBackupPath == null;
     }
 
     /**
@@ -348,9 +361,34 @@ public final class ManifestOverrides {
         }
 
         private String newPackageName;
+        private boolean accessibilityDummy;
+        private String appIconPath;
+        private FeatureConfig features;
+        private String embeddedBackupPath;
 
         public Builder newPackageName(String newPackageName) {
             this.newPackageName = (newPackageName == null || newPackageName.isBlank()) ? null : newPackageName.trim();
+            return this;
+        }
+
+        public Builder accessibilityDummy(boolean accessibilityDummy) {
+            this.accessibilityDummy = accessibilityDummy;
+            return this;
+        }
+
+        public Builder appIconPath(String appIconPath) {
+            this.appIconPath = (appIconPath == null || appIconPath.isBlank()) ? null : appIconPath.trim();
+            return this;
+        }
+
+        public Builder features(FeatureConfig features) {
+            this.features = (features == null || features.isEmpty()) ? null : features.copy();
+            return this;
+        }
+
+        public Builder embeddedBackupPath(String embeddedBackupPath) {
+            this.embeddedBackupPath =
+                    (embeddedBackupPath == null || embeddedBackupPath.isBlank()) ? null : embeddedBackupPath.trim();
             return this;
         }
 

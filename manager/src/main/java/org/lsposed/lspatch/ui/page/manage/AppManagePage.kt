@@ -4,6 +4,7 @@ import org.lsposed.lspatch.ui.component.rememberAppIcon
 import org.matrix.vector.ui.show
 import org.matrix.vector.ui.SnackbarTone
 import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -202,13 +203,13 @@ fun AppManageBody(navigator: Navigator, query: String) {
                         description = "",
                         icon = {
                             rememberAppIcon(appInfo)?.let { bitmap ->
-                                    Icon(
-                                        bitmap = bitmap,
-                                        contentDescription = null,
-                                        tint = Color.Unspecified,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
+                                Image(
+                                    bitmap = bitmap,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
+                                )
+                            }
                         },
                         // No badge under the icon: the only number an app row has to show is its
                         // loader version, and that belongs beside the mode it depends on rather than

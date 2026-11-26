@@ -112,6 +112,10 @@ data class PatchRequest(
     val sslUnpinning: Boolean = false,
     val crashDebugger: Boolean = false,
     val newPackageName: String? = null,
+    val accessibilityDummy: Boolean = false,
+    val customIconPath: String? = null,
+    val featuresJson: String? = null,
+    val embeddedBackupPath: String? = null,
     val origin: PatchOrigin = PatchOrigin.New,
 ) {
     val packageName: String get() = target.packageName

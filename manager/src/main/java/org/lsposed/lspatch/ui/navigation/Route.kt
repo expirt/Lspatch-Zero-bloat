@@ -2,15 +2,18 @@ package org.lsposed.lspatch.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Home
 import androidx.navigation3.runtime.NavKey
 import kotlinx.serialization.Serializable
+import org.lsposed.lspatch.R
 import org.matrix.vector.ui.R as UiR
 import org.matrix.vector.ui.navigation.TopLevelDestination
 
@@ -43,6 +46,8 @@ sealed interface TopLevelRoute : Route {
 
     @Serializable data object Manage : TopLevelRoute
 
+    @Serializable data object Backup : TopLevelRoute
+
     @Serializable data object Logs : TopLevelRoute
 }
 
@@ -57,6 +62,14 @@ sealed interface TopLevelRoute : Route {
  */
 @Serializable data class NewPatch(val token: String) : Route
 
+/** Per-app Anti-Detection & Identity Randomizer configuration screen. */
+@Serializable
+data class IdentityFeatures(
+    val token: String? = null,
+    val packageName: String? = null,
+    val label: String = "",
+) : Route
+
 /**
  * Pick installed modules to embed, starting from [initialSelected].
  *
@@ -65,6 +78,16 @@ sealed interface TopLevelRoute : Route {
  */
 @Serializable
 data class SelectModules(val requestedBy: String, val initialSelected: List<String>) : Route
+
+/** Built-in storage file picker bypassing Android SAF. */
+@Serializable
+data class BuiltInFilePicker(
+    val requestedBy: String,
+    val title: String = "Select file",
+    val extensions: List<String> = listOf("apk", "xapk", "apks", "apkm"),
+    val multiSelect: Boolean = false,
+    val initialPath: String? = null,
+) : Route
 
 /** One patched app: what it was built with, and everything that can be done to it. */
 @Serializable data class AppDetail(val packageName: String) : Route
@@ -112,6 +135,13 @@ val TOP_LEVEL_DESTINATIONS: List<TopLevelDestination> =
             UiR.string.nav_manage,
             Icons.Outlined.Dashboard,
             Icons.Rounded.Dashboard,
+        ),
+        TopLevelDestination(
+            "backup",
+            TopLevelRoute.Backup,
+            R.string.nav_backup,
+            Icons.Outlined.Backup,
+            Icons.Rounded.Backup,
         ),
         TopLevelDestination(
             "logs",

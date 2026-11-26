@@ -48,6 +48,7 @@ fun LSPTheme(
     var colorScheme = when {
         dynamic && dark -> dynamicDarkColorScheme(context)
         dynamic -> dynamicLightColorScheme(context)
+        seed == LSPATCH_SEED -> if (dark) ZeroBloatDarkColorScheme else ZeroBloatLightColorScheme
         else -> remember(seed, dark) { SeedScheme.of(seed, dark) }
     }
     if (dark && amoled) colorScheme = colorScheme.toAmoled()
